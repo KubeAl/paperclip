@@ -117,7 +117,8 @@ export function parsePiJsonl(stdout: string): ParsedPiOutput {
         // Extract usage and cost from assistant message
         const usage = asRecord(message.usage);
         if (usage) {
-          result.usage.inputTokens += asNumber(usage.input, 0);
+          // Cache writes are billed prompt tokens, so they count as input (same as claude_local).
+          result.usage.inputTokens += asNumber(usage.input, 0) + asNumber(usage.cacheWrite, 0);
           result.usage.outputTokens += asNumber(usage.output, 0);
           result.usage.cachedInputTokens += asNumber(usage.cacheRead, 0);
           

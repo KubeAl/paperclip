@@ -1,5 +1,12 @@
 import type { TranscriptEntry } from "@paperclipai/adapter-utils";
 
+// Pi (and pi-compatible CLIs such as prime-agent) stream the same text several times:
+// message_update deltas, then text_end/thinking_end, then message_end, turn_end and agent_end
+// each carry the full message again. Show each piece once: prefer the streamed deltas, fall
+// back to the first full copy only when nothing was streamed.
+
+type ContentPart = { type?: string; text?: string; thinking?: string };
+
 function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -17,36 +24,110 @@ function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function extractTextContent(content: string | Array<{ type: string; text?: string; thinking?: string }>): { text: string; thinking: string } {
+function asNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function extractTextContent(content: unknown): { text: string; thinking: string } {
   if (typeof content === "string") return { text: content, thinking: "" };
   if (!Array.isArray(content)) return { text: "", thinking: "" };
-  
   let text = "";
   let thinking = "";
-  
-  for (const c of content) {
-    if (c.type === "text" && c.text) {
-      text += c.text;
-    }
-    if (c.type === "thinking" && c.thinking) {
-      thinking += c.thinking;
-    }
+  for (const c of content as ContentPart[]) {
+    if (c?.type === "text" && c.text) text += c.text;
+    if (c?.type === "thinking" && c.thinking) thinking += c.thinking;
   }
-  
   return { text, thinking };
 }
 
-// Track pending tool calls for proper toolUseId matching
-let pendingToolCalls = new Map<string, { toolName: string; args: unknown }>();
+function toolResultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (Array.isArray(result)) {
+    return extractTextContent(result).text || JSON.stringify(result);
+  }
+  const record = asRecord(result);
+  if (record && Array.isArray(record.content)) {
+    return extractTextContent(record.content).text || JSON.stringify(result);
+  }
+  return result === undefined ? "" : JSON.stringify(result) ?? String(result);
+}
+
+// Per-run parser state (reset between transcripts via resetParserState).
+const state = {
+  pendingToolCalls: new Map<string, { toolName: string; args: unknown }>(),
+  finishedToolCalls: new Set<string>(),
+  // What the current assistant message already showed.
+  streamed: { text: false, thinking: false },
+  shown: { text: false, thinking: false },
+  // What the current turn already showed (turn_end fallback).
+  turnShown: false,
+  lastAssistantText: "",
+  usage: { input: 0, output: 0, cached: 0, cost: 0 },
+};
+
+function resetMessage(): void {
+  state.streamed = { text: false, thinking: false };
+  state.shown = { text: false, thinking: false };
+}
 
 export function resetParserState(): void {
-  pendingToolCalls.clear();
+  state.pendingToolCalls.clear();
+  state.finishedToolCalls.clear();
+  resetMessage();
+  state.turnShown = false;
+  state.lastAssistantText = "";
+  state.usage = { input: 0, output: 0, cached: 0, cost: 0 };
+}
+
+function addUsage(usageValue: unknown): void {
+  const usage = asRecord(usageValue);
+  if (!usage) return;
+  // Cache writes are billed prompt tokens, so they count as input (same as claude_local).
+  state.usage.input += asNumber(usage.inputTokens ?? usage.input) + asNumber(usage.cacheWrite);
+  state.usage.output += asNumber(usage.outputTokens ?? usage.output);
+  state.usage.cached += asNumber(usage.cacheRead ?? usage.cachedInputTokens);
+  state.usage.cost += asNumber(asRecord(usage.cost)?.total ?? usage.costUsd);
+}
+
+/** Emit full text/thinking from a finished assistant message, skipping what was already shown. */
+function fullMessageEntries(message: Record<string, unknown>, ts: string): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
+  const { text, thinking } = extractTextContent(message.content);
+  if (thinking && !state.streamed.thinking && !state.shown.thinking) {
+    entries.push({ kind: "thinking", ts, text: thinking });
+  }
+  if (text && !state.streamed.text && !state.shown.text) {
+    entries.push({ kind: "assistant", ts, text });
+  }
+  if (text) state.lastAssistantText = text;
+  if (message.stopReason === "error") {
+    const error = asString(message.errorMessage).trim() || "Provider request failed.";
+    entries.push({ kind: "stderr", ts, text: error });
+  }
+  if (entries.length > 0 || state.streamed.text || state.streamed.thinking || state.shown.text || state.shown.thinking) {
+    state.turnShown = true;
+  }
+  return entries;
+}
+
+function toolResultEntry(toolCallId: string, toolNameHint: string, result: unknown, isError: boolean, ts: string): TranscriptEntry[] {
+  if (state.finishedToolCalls.has(toolCallId)) return [];
+  state.finishedToolCalls.add(toolCallId);
+  const pending = state.pendingToolCalls.get(toolCallId);
+  state.pendingToolCalls.delete(toolCallId);
+  return [{
+    kind: "tool_result",
+    ts,
+    toolUseId: toolCallId,
+    toolName: toolNameHint || pending?.toolName || "tool",
+    content: toolResultText(result),
+    isError,
+  }];
 }
 
 export function parsePiStdoutLine(line: string, ts: string): TranscriptEntry[] {
   const parsed = asRecord(safeJsonParse(line));
   if (!parsed) {
-    // Non-JSON line, treat as raw stdout
     const trimmed = line.trim();
     if (!trimmed) return [];
     return [{ kind: "stdout", ts, text: trimmed }];
@@ -54,258 +135,153 @@ export function parsePiStdoutLine(line: string, ts: string): TranscriptEntry[] {
 
   const type = asString(parsed.type);
 
-  // RPC protocol messages - filter these out (internal implementation detail)
-  if (type === "response" || type === "extension_ui_request" || type === "extension_ui_response" || type === "extension_error") {
-    return [];
-  }
+  switch (type) {
+    // RPC plumbing and noisy lifecycle/progress events.
+    case "response":
+    case "extension_ui_request":
+    case "extension_ui_response":
+    case "extension_error":
+    case "session":
+    case "session_action_update":
+    case "turn_start":
+    case "tool_execution_update":
+      return [];
 
-  // Agent lifecycle
-  if (type === "agent_start") {
-    return [{ kind: "system", ts, text: "🚀 Pi agent started" }];
-  }
+    case "agent_start":
+      resetParserState();
+      return [{ kind: "system", ts, text: "🚀 Pi agent started" }];
 
-  if (type === "agent_end") {
-    const entries: TranscriptEntry[] = [];
-    
-    // Extract final message from messages array if available
-    const messages = parsed.messages as Array<Record<string, unknown>> | undefined;
-    if (messages && messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.role === "assistant") {
-        const content = lastMessage.content as string | Array<{ type: string; text?: string; thinking?: string }>;
-        const { text, thinking } = extractTextContent(content);
-        
-        if (thinking) {
-          entries.push({ kind: "thinking", ts, text: thinking });
-        }
-        if (text) {
-          entries.push({ kind: "assistant", ts, text });
-        }
-        
-        // Extract usage
-        const usage = asRecord(lastMessage.usage);
-        if (usage) {
-          const inputTokens = (usage.inputTokens ?? usage.input ?? 0) as number;
-          const outputTokens = (usage.outputTokens ?? usage.output ?? 0) as number;
-          const cachedTokens = (usage.cacheRead ?? usage.cachedInputTokens ?? 0) as number;
-          const costRecord = asRecord(usage.cost);
-          const costUsd = (costRecord?.total ?? usage.costUsd ?? 0) as number;
-          
-          if (inputTokens > 0 || outputTokens > 0) {
-            entries.push({
-              kind: "result",
-              ts,
-              text: "Run completed",
-              inputTokens,
-              outputTokens,
-              cachedTokens,
-              costUsd,
-              subtype: "end",
-              isError: false,
-              errors: [],
-            });
-          }
-        }
-      }
+    case "message_start": {
+      const message = asRecord(parsed.message);
+      if (message?.role === "assistant") resetMessage();
+      return [];
     }
-    
-    if (entries.length === 0) {
-      entries.push({ kind: "system", ts, text: "✅ Pi agent finished" });
+
+    case "message_update": {
+      const event = asRecord(parsed.assistantMessageEvent);
+      if (!event) return [];
+      const eventType = asString(event.type);
+      if (eventType === "text_delta" || eventType === "thinking_delta") {
+        const delta = asString(event.delta);
+        if (!delta) return [];
+        const kind = eventType === "text_delta" ? "assistant" : "thinking";
+        state.streamed[kind === "assistant" ? "text" : "thinking"] = true;
+        state.turnShown = true;
+        return [{ kind, ts, text: delta, delta: true }];
+      }
+      if (eventType === "text_end" || eventType === "thinking_end") {
+        const key = eventType === "text_end" ? "text" : "thinking";
+        const content = asString(event.content);
+        if (!content || state.streamed[key]) return [];
+        state.shown[key] = true;
+        state.turnShown = true;
+        return [{ kind: key === "text" ? "assistant" : "thinking", ts, text: content }];
+      }
+      return [];
     }
-    
-    return entries;
-  }
 
-  // Turn lifecycle
-  if (type === "turn_start") {
-    return []; // Skip noisy lifecycle events
-  }
-
-  if (type === "turn_end") {
-    const message = asRecord(parsed.message);
-    const toolResults = parsed.toolResults as Array<Record<string, unknown>> | undefined;
-    
-    const entries: TranscriptEntry[] = [];
-    
-    if (message) {
-      const content = message.content as string | Array<{ type: string; text?: string; thinking?: string }>;
-      const { text, thinking } = extractTextContent(content);
-      
-      if (thinking) {
-        entries.push({ kind: "thinking", ts, text: thinking });
+    case "message_end": {
+      const message = asRecord(parsed.message);
+      if (!message) return [];
+      const role = asString(message.role);
+      if (role === "assistant") {
+        const entries = fullMessageEntries(message, ts);
+        resetMessage();
+        return entries;
       }
-      if (text) {
-        entries.push({ kind: "assistant", ts, text });
+      if (role === "user") {
+        const { text } = extractTextContent(message.content);
+        return text ? [{ kind: "user", ts, text }] : [];
       }
+      // toolResult messages duplicate tool_execution_end; custom messages are harness context.
+      return [];
     }
-    
-    // Process tool results - match with pending tool calls
-    if (toolResults) {
-      for (const tr of toolResults) {
-        const toolCallId = asString(tr.toolCallId, `tool-${Date.now()}`);
-        const content = tr.content;
-        const isError = tr.isError === true;
-        
-        // Extract text from Pi's content array format
-        let contentStr: string;
-        if (typeof content === "string") {
-          contentStr = content;
-        } else if (Array.isArray(content)) {
-          const extracted = extractTextContent(content as Array<{ type: string; text?: string }>);
-          contentStr = extracted.text || JSON.stringify(content);
-        } else {
-          contentStr = JSON.stringify(content);
-        }
-        
-        // Get tool name from pending calls if available
-        const pendingCall = pendingToolCalls.get(toolCallId);
-        const toolName = asString(tr.toolName, pendingCall?.toolName || "tool");
-        
-        entries.push({
-          kind: "tool_result",
-          ts,
-          toolUseId: toolCallId,
-          toolName,
-          content: contentStr,
-          isError,
-        });
-        
-        // Clean up pending call
-        pendingToolCalls.delete(toolCallId);
-      }
-    }
-    
-    return entries;
-  }
 
-  // Message streaming
-  if (type === "message_start") {
-    return [];
-  }
-
-  if (type === "message_update") {
-    const assistantEvent = asRecord(parsed.assistantMessageEvent);
-    if (assistantEvent) {
-      const msgType = asString(assistantEvent.type);
-      
-      // Handle thinking deltas
-      if (msgType === "thinking_delta") {
-        const delta = asString(assistantEvent.delta);
-        if (delta) {
-          return [{ kind: "thinking", ts, text: delta, delta: true }];
-        }
-      }
-      
-      // Handle text deltas
-      if (msgType === "text_delta") {
-        const delta = asString(assistantEvent.delta);
-        if (delta) {
-          return [{ kind: "assistant", ts, text: delta, delta: true }];
-        }
-      }
-      
-      // Handle thinking end - emit full thinking block
-      if (msgType === "thinking_end") {
-        const content = asString(assistantEvent.content);
-        if (content) {
-          return [{ kind: "thinking", ts, text: content }];
-        }
-      }
-      
-      // Handle text end - emit full text block
-      if (msgType === "text_end") {
-        const content = asString(assistantEvent.content);
-        if (content) {
-          return [{ kind: "assistant", ts, text: content }];
-        }
-      }
-    }
-    return [];
-  }
-
-  if (type === "message_end") {
-    const message = asRecord(parsed.message);
-    if (message) {
-      const content = message.content as string | Array<{ type: string; text?: string; thinking?: string }>;
-      const { text, thinking } = extractTextContent(content);
-      
+    case "turn_end": {
       const entries: TranscriptEntry[] = [];
-      
-      // Emit final thinking block if present
-      if (thinking) {
-        entries.push({ kind: "thinking", ts, text: thinking });
+      const message = asRecord(parsed.message);
+      if (message) {
+        addUsage(message.usage);
+        // Only a fallback: normally message_end/deltas already showed this turn's text.
+        if (!state.turnShown && message.role === "assistant") entries.push(...fullMessageEntries(message, ts));
+        const { text } = extractTextContent(message.content);
+        if (text) state.lastAssistantText = text;
       }
-      
-      // Emit final text block if present
-      if (text) {
-        entries.push({ kind: "assistant", ts, text });
+      const toolResults = parsed.toolResults;
+      if (Array.isArray(toolResults)) {
+        for (const tr of toolResults) {
+          const record = asRecord(tr);
+          if (!record) continue;
+          const id = asString(record.toolCallId);
+          if (!id) continue;
+          entries.push(...toolResultEntry(id, asString(record.toolName), record.content, record.isError === true, ts));
+        }
       }
-      
+      state.turnShown = false;
+      resetMessage();
       return entries;
     }
-    return [];
-  }
 
-  // Tool execution
-  if (type === "tool_execution_start") {
-    const toolCallId = asString(parsed.toolCallId, `tool-${Date.now()}`);
-    const toolName = asString(parsed.toolName, "tool");
-    const args = parsed.args;
-    
-    // Track this tool call for later matching
-    pendingToolCalls.set(toolCallId, { toolName, args });
-    
-    return [{
-      kind: "tool_call",
-      ts,
-      name: toolName,
-      input: args,
-      toolUseId: toolCallId,
-    }];
-  }
-
-  if (type === "tool_execution_update") {
-    return [];
-  }
-
-  if (type === "tool_execution_end") {
-    const toolCallId = asString(parsed.toolCallId, `tool-${Date.now()}`);
-    const toolName = asString(parsed.toolName, "tool");
-    const result = parsed.result;
-    const isError = parsed.isError === true;
-    
-    // Extract text from Pi's content array format
-    let contentStr: string;
-    if (typeof result === "string") {
-      contentStr = result;
-    } else if (Array.isArray(result)) {
-      const extracted = extractTextContent(result as Array<{ type: string; text?: string }>);
-      contentStr = extracted.text || JSON.stringify(result);
-    } else if (result && typeof result === "object") {
-      const resultObj = result as Record<string, unknown>;
-      if (Array.isArray(resultObj.content)) {
-        const extracted = extractTextContent(resultObj.content as Array<{ type: string; text?: string }>);
-        contentStr = extracted.text || JSON.stringify(result);
-      } else {
-        contentStr = JSON.stringify(result);
+    case "agent_end": {
+      const entries: TranscriptEntry[] = [];
+      const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
+      const last = asRecord(messages[messages.length - 1]);
+      if (last?.role === "assistant") {
+        const { text } = extractTextContent(last.content);
+        if (text && text !== state.lastAssistantText) entries.push({ kind: "assistant", ts, text });
+        // Streams without turn_end usage: fall back to the final message's usage.
+        if (state.usage.input === 0 && state.usage.output === 0) addUsage(last.usage);
       }
-    } else {
-      contentStr = String(result);
+      const { input, output, cached, cost } = state.usage;
+      if (input > 0 || output > 0) {
+        entries.push({
+          kind: "result",
+          ts,
+          text: "Run completed",
+          inputTokens: input,
+          outputTokens: output,
+          cachedTokens: cached,
+          costUsd: cost,
+          subtype: "end",
+          isError: false,
+          errors: [],
+        });
+      } else {
+        entries.push({ kind: "system", ts, text: "✅ Pi agent finished" });
+      }
+      return entries;
     }
-    
-    // Clean up pending call
-    pendingToolCalls.delete(toolCallId);
-    
-    return [{
-      kind: "tool_result",
-      ts,
-      toolUseId: toolCallId,
-      toolName,
-      content: contentStr,
-      isError,
-    }];
-  }
 
-  // Fallback for unknown event types
-  return [{ kind: "stdout", ts, text: line }];
+    case "tool_execution_start": {
+      const toolCallId = asString(parsed.toolCallId, `tool-${Date.now()}`);
+      const toolName = asString(parsed.toolName, "tool");
+      state.pendingToolCalls.set(toolCallId, { toolName, args: parsed.args });
+      return [{ kind: "tool_call", ts, name: toolName, input: parsed.args, toolUseId: toolCallId }];
+    }
+
+    case "tool_execution_end": {
+      const toolCallId = asString(parsed.toolCallId, `tool-${Date.now()}`);
+      return toolResultEntry(toolCallId, asString(parsed.toolName), parsed.result, parsed.isError === true, ts);
+    }
+
+    case "auto_retry_end":
+      return parsed.success === true
+        ? []
+        : [{ kind: "stderr", ts, text: asString(parsed.finalError).trim() || "Automatic retries exhausted." }];
+
+    case "error": {
+      const message = asString(parsed.message).trim();
+      return message ? [{ kind: "stderr", ts, text: message }] : [];
+    }
+
+    // prime-agent: continual-harness refinement finished.
+    case "refine_complete": {
+      const result = asRecord(parsed.result);
+      const summary = asString(result?.summary).trim();
+      return summary ? [{ kind: "system", ts, text: `🧠 Harness refined: ${summary}` }] : [];
+    }
+
+    default:
+      return [{ kind: "stdout", ts, text: line }];
+  }
 }
