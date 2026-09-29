@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PAPERCLIP_HOME</key>
+		<string>/Users/rahultripathi/.paperclip</string>
+		<key>PAPERCLIP_INSTANCE_ID</key>
+		<string>default</string>
+		<key>PAPERCLIP_SERVICE_MANAGED</key>
+		<string>1</string>
+		<key>PAPERCLIP_UI_DEV_MIDDLEWARE</key>
+		<string>false</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/Users/rahultripathi/.local/bin:/Users/rahultripathi/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>ExitTimeOut</key>
+	<integer>300</integer>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>ing.paperclip.paperclipai</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/node</string>
+		<string>/Users/rahultripathi/infra/paperclip/src/cli/node_modules/tsx/dist/cli.mjs</string>
+		<string>/Users/rahultripathi/infra/paperclip/src/cli/src/index.ts</string>
+		<string>run</string>
+		<string>--instance</string>
+		<string>default</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/rahultripathi/.paperclip/instances/default/logs/service.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/rahultripathi/.paperclip/instances/default/logs/service.log</string>
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<key>WorkingDirectory</key>
+	<string>/Users/rahultripathi/infra/paperclip/src</string>
+</dict>
+</plist>
