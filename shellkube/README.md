@@ -33,3 +33,6 @@ HTTPS: `tailscale serve --https=3443 → 127.0.0.1:3100`.
 Rollback: `git switch -d <previous sha>` + deploy.sh; if a migration broke the DB, restore the backup it printed.
 Last resort: point the LaunchAgent back at the npm CLI (`~/infra/paperclip/ing.paperclip.paperclipai.plist.bak-npm`).
 Note: upstream migrations only go forward — an older build cannot run on a newer DB without restoring a backup.
+
+## Plugins
+- `plugins/planner` — due/start dates, calendar (incl. routine runs), bookmarks, auto-start job. See its README.

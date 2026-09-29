@@ -1,0 +1,15 @@
+{
+  "name": "@shellkube/paperclip-plugin-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shellkube planner: task due/start dates, calendar, bookmarks",
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
