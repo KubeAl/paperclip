@@ -1,0 +1,6 @@
+# Core patches we carry until upstream lands its own fix.
+# Format: <our commit> <upstream PR numbers, comma-separated> <note>
+# sync-upstream.sh: if ANY listed PR is merged upstream, it reverts our commit BEFORE merging upstream,
+# so upstream's version lands with no conflict. Then it drops the line and tells you to re-test.
+f20d19f6e 13880 heartbeat: re-admit stage handoff blocked by held env lease (issue #13532)
+96fe10f67 14320,11781,10249 pi-local transcript: dedupe, roles, cacheWrite (our own rewrite)
