@@ -4,3 +4,8 @@
 # so upstream's version lands with no conflict. Then it drops the line and tells you to re-test.
 f20d19f6e 13880 heartbeat: re-admit stage handoff blocked by held env lease (issue #13532)
 96fe10f67 14320,11781,10249 pi-local transcript: dedupe, roles, cacheWrite (our own rewrite)
+1670105f6 13389 server: preserve legacy leases across host sleep
+6f4d58e60 13944 routines: active routine executions are re-armed polls, not missing dispositions
+c8b82932a 14503 pi-local: strip inherited server PAPERCLIP_* env (security)
+0acf998de 14390 adapter-utils: redact known secret env values in run logs
+8035ee012 13618 db: harden embedded PG backup gzip artifacts
