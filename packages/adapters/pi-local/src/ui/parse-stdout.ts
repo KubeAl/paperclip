@@ -141,6 +141,7 @@ export function parsePiStdoutLine(line: string, ts: string): TranscriptEntry[] {
     case "extension_ui_request":
     case "extension_ui_response":
     case "extension_error":
+    case "paperclip_progress":
     case "session":
     case "session_action_update":
     case "turn_start":

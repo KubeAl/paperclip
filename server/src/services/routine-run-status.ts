@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { issues, routineRuns } from "@paperclipai/db";
+import { issues, routineRuns, routines } from "@paperclipai/db";
 
 const EXECUTION_ISSUE_TRANSIENT_FAILURE_CODE = "execution_issue_status";
 const EXECUTION_ISSUE_TRANSIENT_FAILURE_STATUSES = ["blocked", "cancelled"] as const;
@@ -63,6 +63,7 @@ export async function syncRoutineRunStatusForIssue(db: Db, issueId: string) {
   const issue = await db
     .select({
       id: issues.id,
+      companyId: issues.companyId,
       status: issues.status,
       originKind: issues.originKind,
       originRunId: issues.originRunId,
@@ -79,7 +80,8 @@ export async function syncRoutineRunStatusForIssue(db: Db, issueId: string) {
       triggerPayload: routineRuns.triggerPayload,
     })
     .from(routineRuns)
-    .where(eq(routineRuns.id, issue.originRunId))
+    .innerJoin(routines, and(eq(routines.id, routineRuns.routineId), eq(routines.companyId, issue.companyId)))
+    .where(and(eq(routineRuns.id, issue.originRunId), eq(routineRuns.companyId, issue.companyId)))
     .then((rows) => rows[0] ?? null);
   if (!run) return null;
   if (issue.status === "done") {

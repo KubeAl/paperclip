@@ -1,3 +1,4 @@
+import { DELIVERY_QUEUES, notifyDeliveryWork } from "./delivery-work-notifications.js";
 import { verifyAppWebhook } from "./app-webhook.js";
 import crypto from "node:crypto";
 import { verifyFirefliesWebhook } from "./fireflies-webhook.js";
@@ -221,8 +222,13 @@ function getZonedMinuteParts(date: Date, timeZone: string) {
   };
 }
 
-function matchesCronMinute(expression: string, timeZone: string, date: Date) {
-  const cron = parseCron(expression);
+function matchesCronMinute(cron: ReturnType<typeof parseCron>, timeZone: string, date: Date) {
+  if (timeZone === "UTC" && Number.isFinite(date.getTime()) && (
+    !cron.minutes.includes(date.getUTCMinutes())
+    || !cron.daysOfMonth.includes(date.getUTCDate())
+    || !cron.months.includes(date.getUTCMonth() + 1)
+    || !cron.daysOfWeek.includes(date.getUTCDay())
+  )) return false;
   const parts = getZonedMinuteParts(date, timeZone);
   return (
     cron.minutes.includes(parts.minute) &&
@@ -236,16 +242,18 @@ function matchesCronMinute(expression: string, timeZone: string, date: Date) {
 export function nextCronTickInTimeZone(expression: string, timeZone: string, after: Date) {
   const trimmed = expression.trim();
   assertTimeZone(timeZone);
-  const error = validateCron(trimmed);
-  if (error) {
-    throw unprocessable(error);
+  let cron: ReturnType<typeof parseCron>;
+  try {
+    cron = parseCron(trimmed);
+  } catch (error) {
+    throw unprocessable(error instanceof Error ? error.message : String(error));
   }
 
   const cursor = floorToMinute(after);
   cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
   const limit = 366 * 24 * 60 * 5;
   for (let i = 0; i < limit; i += 1) {
-    if (matchesCronMinute(trimmed, timeZone, cursor)) {
+    if (matchesCronMinute(cron, timeZone, cursor)) {
       return new Date(cursor.getTime());
     }
     cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
@@ -633,6 +641,14 @@ function mapRoutineDescriptionDocument(row: {
   };
 }
 
+// Match PostgreSQL UUID input, including compact/braced forms and any version.
+// Do not trim or resolve prefixes: the exact input must be safe for a UUID query.
+function isRoutineUuidInput(id: string): boolean {
+  if (/\s/.test(id)) return false;
+  const value = id.startsWith("{") && id.endsWith("}") ? id.slice(1, -1) : id;
+  return /^(?:[0-9a-f]{4}-?){7}[0-9a-f]{4}$/i.test(value);
+}
+
 export function routineService(
   db: Db,
   deps: {
@@ -650,6 +666,7 @@ export function routineService(
   });
 
   async function getRoutineById(id: string) {
+    if (!isRoutineUuidInput(id)) return null;
     return db
       .select()
       .from(routines)
@@ -734,6 +751,7 @@ export function routineService(
   }
 
   async function getTriggerById(id: string) {
+    if (!isRoutineUuidInput(id)) return null;
     return db
       .select()
       .from(routineTriggers)
@@ -2015,6 +2033,12 @@ export function routineService(
     return run;
   }
 
+  let statusReconcileCursor: string | null = null;
+
+  function syncRunStatusForIssue(issueId: string, executor: Db = db) {
+    return syncRoutineRunStatusForIssue(executor, issueId);
+  }
+
   return {
     evaluateActivityGate,
     get: getRoutineById,
@@ -2188,6 +2212,7 @@ export function routineService(
       }
       const createdRoutine = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
+        await notifyDeliveryWork(txDb, DELIVERY_QUEUES.routineSchedules);
         const [created] = await txDb
           .insert(routines)
           .values({
@@ -2292,6 +2317,7 @@ export function routineService(
       }
       const updatedRoutine = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
+        await notifyDeliveryWork(txDb, DELIVERY_QUEUES.routineSchedules);
         await tx.execute(sql`select id from ${routines} where ${routines.id} = ${id} for update`);
         const locked = await txDb
           .select()
@@ -2446,6 +2472,7 @@ export function routineService(
 
       const { trigger, revision } = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
+        await notifyDeliveryWork(txDb, DELIVERY_QUEUES.routineSchedules);
         await tx.execute(sql`select id from ${routines} where ${routines.id} = ${routine.id} for update`);
         const [createdTrigger] = await txDb
           .insert(routineTriggers)
@@ -2520,6 +2547,7 @@ export function routineService(
 
       const result = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
+        await notifyDeliveryWork(txDb, DELIVERY_QUEUES.routineSchedules);
         await tx.execute(sql`select id from ${routines} where ${routines.id} = ${existing.routineId} for update`);
         const [updated] = await txDb
           .update(routineTriggers)
@@ -2559,6 +2587,7 @@ export function routineService(
       if (!existing) return { deleted: false, revision: null };
       const result = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
+        await notifyDeliveryWork(txDb, DELIVERY_QUEUES.routineSchedules);
         await tx.execute(sql`select id from ${routines} where ${routines.id} = ${existing.routineId} for update`);
         await txDb.delete(routineTriggers).where(eq(routineTriggers.id, id));
         const routine = await txDb
@@ -2677,6 +2706,7 @@ export function routineService(
 
       const result = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
+        await notifyDeliveryWork(txDb, DELIVERY_QUEUES.routineSchedules);
         await tx.execute(sql`select id from ${routines} where ${routines.id} = ${existingRoutine.id} for update`);
         const locked = await txDb
           .select()
@@ -3261,7 +3291,56 @@ export function routineService(
       return { triggered };
     },
 
-    syncRunStatusForIssue: async (issueId: string) =>
-      syncRoutineRunStatusForIssue(db, issueId),
+    // Repair a missed issue-status hook through the same status transition as
+    // normal issue writes. Never discard queued input or infer run completion
+    // from age. Lock both owners and re-read the issue before applying repair.
+    reconcileExecutionRunStatuses: async (): Promise<{ scanned: number; settled: number; deferred: number }> => {
+      const candidates = await db.select({ id: routineRuns.id, companyId: routineRuns.companyId,
+        issueId: issues.id, routineId: routineRuns.routineId })
+        .from(routineRuns).innerJoin(routines, and(eq(routines.id, routineRuns.routineId), eq(routines.companyId, routineRuns.companyId)))
+        .innerJoin(issues, and(eq(issues.id, routineRuns.linkedIssueId),
+          eq(issues.companyId, routineRuns.companyId), eq(issues.originKind, "routine_execution"),
+          sql`${issues.originRunId} = ${routineRuns.id}::text`, sql`${issues.originId} = ${routineRuns.routineId}::text`))
+        .where(and(eq(routineRuns.status, "issue_created"), inArray(issues.status, ["done", "cancelled", "blocked"]),
+          ...(statusReconcileCursor ? [sql`${routineRuns.id}::text > ${statusReconcileCursor}`] : [])))
+        .orderBy(asc(routineRuns.id)).limit(50);
+      statusReconcileCursor = candidates.length === 50 ? candidates.at(-1)!.id : null;
+      let settled = 0;
+      let deferred = 0;
+      for (const candidate of candidates) {
+        try {
+          const repaired = await db.transaction(async tx => {
+            await tx.execute(sql`SET LOCAL lock_timeout = '500ms'`);
+            await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+            const [routine] = await tx.select({ id: routines.id }).from(routines).where(and(
+              eq(routines.id, candidate.routineId), eq(routines.companyId, candidate.companyId))).for("share");
+            if (!routine) return false;
+            const [issue] = await tx.select().from(issues).where(and(eq(issues.id, candidate.issueId),
+              eq(issues.companyId, candidate.companyId), eq(issues.originKind, "routine_execution"),
+              eq(issues.originRunId, candidate.id), eq(issues.originId, candidate.routineId))).for("update");
+            if (!issue || !["done", "cancelled", "blocked"].includes(issue.status)) return false;
+            const [run] = await tx.select().from(routineRuns).where(and(eq(routineRuns.id, candidate.id),
+              eq(routineRuns.companyId, candidate.companyId), eq(routineRuns.routineId, candidate.routineId),
+              eq(routineRuns.linkedIssueId, issue.id), eq(routineRuns.status, "issue_created"))).for("update");
+            if (!run) return false;
+            return (await syncRunStatusForIssue(issue.id, tx as unknown as Db)) !== null;
+          });
+          if (repaired) settled += 1;
+        } catch (error) {
+          let current: unknown = error;
+          let retryable = false;
+          for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+            const cause = current as { code?: string; cause?: unknown };
+            if (["55P03", "57014", "40P01", "40001"].includes(cause.code ?? "")) { retryable = true; break; }
+            current = cause.cause;
+          }
+          if (!retryable) throw error;
+          deferred += 1;
+        }
+      }
+      return { scanned: candidates.length, settled, deferred };
+    },
+
+    syncRunStatusForIssue,
   };
 }
