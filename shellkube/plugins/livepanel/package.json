@@ -1,0 +1,15 @@
+{
+  "name": "@shellkube/paperclip-plugin-livepanel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shellkube live panel: agents render live HTML on a task and collect user input",
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

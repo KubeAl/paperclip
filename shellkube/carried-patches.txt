@@ -12,3 +12,4 @@ f20d19f6e 13880 heartbeat: re-admit stage handoff blocked by held env lease (iss
 c8b82932a 14503 pi-local: strip inherited server PAPERCLIP_* env (security)
 0acf998de 14390 adapter-utils: redact known secret env values in run logs
 8035ee012 13618 db: harden embedded PG backup gzip artifacts
+d69a978f6 8150 plugins: wire PluginStreamBus (SSE bridge returned 501); needed by shellkube.livepanel
