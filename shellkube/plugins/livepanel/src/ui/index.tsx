@@ -5,7 +5,7 @@ import { SRCDOC } from "./frame";
 type Op = { target?: string; mode?: string; html?: string };
 type PanelState = {
   name: string; title: string; html: string; patches: Op[]; data: Record<string, unknown>;
-  version: number; rev: number; updatedAt: string;
+  version: number; rev: number; updatedAt: string; saved: Record<string, unknown>;
 };
 
 const MAX_HEIGHT = 1200;
@@ -25,7 +25,7 @@ function Frame({ panel, submit }: {
     const p = latest.current, s = shown.current, w = ref.current?.contentWindow;
     if (!w || !s.ready) return;
     if (s.version !== p.version) {
-      w.postMessage({ t: "render", html: p.html, theme: isDark() ? "dark" : "light" }, "*");
+      w.postMessage({ t: "render", html: p.html, theme: isDark() ? "dark" : "light", saved: p.saved }, "*");
       s.version = p.version; s.patches = 0;
     }
     if (p.patches.length > s.patches) {

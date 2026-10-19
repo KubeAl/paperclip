@@ -5,6 +5,7 @@ type Input = { seq: number; action: string; values: unknown; userId: string; at:
 type Panel = {
   name: string; title: string; html: string; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; seq: number; inputs: Input[]; agentId: string; updatedAt: string;
+  renderSeq?: number; // input seq at the last render: later inputs are restored into that render's forms
 };
 type Panels = Record<string, Panel>;
 
@@ -80,7 +81,7 @@ const plugin = definePlugin({
         if (!cur && Object.keys(all).length >= MAX_PANELS) throw new Error(`at most ${MAX_PANELS} panels per task`);
         return {
           name, title: str(p.title) || cur?.title || "", html, patches: [], data: data ?? cur?.data ?? {},
-          version: (cur?.version ?? 0) + 1, rev: 0, seq: cur?.seq ?? 0, inputs: cur?.inputs ?? [],
+          version: (cur?.version ?? 0) + 1, rev: 0, seq: cur?.seq ?? 0, renderSeq: cur?.seq ?? 0, inputs: cur?.inputs ?? [],
           agentId: run.agentId, updatedAt: "",
         };
       });
@@ -134,7 +135,11 @@ const plugin = definePlugin({
       await issueIn(issueId, companyId);
       const all = await load(issueId);
       return Object.values(all).sort((a, b) => a.name.localeCompare(b.name))
-        .map(({ inputs, ...rest }) => ({ ...rest, lastInput: inputs.at(-1) ?? null }));
+        .map(({ inputs, renderSeq = 0, ...rest }) => {
+          const saved: Record<string, unknown> = {};
+          for (const i of inputs) if (i.seq > renderSeq) saved[i.action] = i.values;
+          return { ...rest, lastInput: inputs.at(-1) ?? null, saved };
+        });
     });
 
     ctx.actions.register("submit", async (params, { actor }) => {

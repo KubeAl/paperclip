@@ -7,23 +7,41 @@ const CSP = [
 ].join("; ");
 
 const CSS = `
-:root{--fg:#111827;--muted:#6b7280;--bd:rgba(127,127,127,.3);--bg2:rgba(127,127,127,.08);--acc:#2563eb;--ok:#16a34a;--warn:#d97706;--err:#dc2626;color-scheme:light}
-:root[data-theme=dark]{--fg:#e5e7eb;--muted:#9ca3af;--acc:#3b82f6;color-scheme:dark}
-body{margin:0;padding:1px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:transparent}
-h1,h2,h3{margin:.5em 0 .3em;line-height:1.25}h1{font-size:1.2em}h2{font-size:1.08em}h3{font-size:1em}
-p{margin:.4em 0}.muted{color:var(--muted);font-size:.9em}
-table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--bd);padding:4px 8px;text-align:left;vertical-align:top}
-th{font-weight:600;color:var(--muted);font-size:.9em}
-input,select,textarea,button{font:inherit;color:inherit;border:1px solid var(--bd);border-radius:6px;padding:4px 8px;background:transparent}
-textarea{width:100%;box-sizing:border-box;min-height:4em}
+:root{--fg:#111827;--muted:#6b7280;--bd:rgba(127,127,127,.28);--bg2:rgba(127,127,127,.07);--acc:#2563eb;--ok:#16a34a;--warn:#d97706;--err:#dc2626;--info:#2563eb;color-scheme:light}
+:root[data-theme=dark]{--fg:#e5e7eb;--muted:#9ca3af;--acc:#3b82f6;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444;--info:#60a5fa;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding:1px;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:transparent;font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:.6em 0 .35em;line-height:1.25}h1{font-size:1.2em}h2{font-size:1.05em}h3{font-size:.8em;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+p{margin:.4em 0}.muted,small{color:var(--muted);font-size:.88em}a{color:var(--acc)}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.85em}.num,td.num,th.num{text-align:right;white-space:nowrap}
+input,select,textarea,button{font:inherit;color:inherit;border:1px solid var(--bd);border-radius:6px;padding:5px 9px;background:transparent}
+input[type=checkbox],input[type=radio]{width:16px;height:16px;margin:0;accent-color:var(--ok);flex:none;cursor:pointer}
+textarea{width:100%;min-height:4em}
 button{cursor:pointer;background:var(--bg2)}button.primary,button[type=submit]{background:var(--acc);border-color:var(--acc);color:#fff}
 button:disabled,input:disabled,select:disabled,textarea:disabled{opacity:.55;cursor:default}
 label{display:block;margin:.45em 0}label>input:not([type=checkbox]):not([type=radio]),label>select,label>textarea{display:block;margin-top:2px}
 form{margin:.5em 0}fieldset{border:1px solid var(--bd);border-radius:8px}
-.card{border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin:.5em 0}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}
-.badge{display:inline-block;padding:0 7px;border-radius:10px;font-size:.8em;border:1px solid currentColor}
+.card{border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin:.6em 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.spacer{flex:1}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}.info{color:var(--info)}
+.badge,.pill{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;font-size:.78em;font-weight:600;white-space:nowrap;color:var(--muted);background:var(--bg2)}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.pill.err{color:var(--err);background:color-mix(in srgb,var(--err) 14%,transparent)}
+.pill.info{color:var(--info);background:color-mix(in srgb,var(--info) 14%,transparent)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:.6em 0}
+.tile{border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:8px;padding:8px 10px}
+.tile .v{font-size:1.45em;font-weight:650;line-height:1.2}.tile .l{font-size:.8em;color:var(--muted)}
+.tile.ok{border-left-color:var(--ok)}.tile.warn{border-left-color:var(--warn)}.tile.err{border-left-color:var(--err)}.tile.info{border-left-color:var(--info)}
+.tile.ok .v{color:var(--ok)}.tile.warn .v{color:var(--warn)}.tile.err .v{color:var(--err)}
+.list{border:1px solid var(--bd);border-radius:10px;margin:.6em 0;overflow:hidden}
+.item{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;margin:0;border-top:1px solid var(--bd)}.item:first-child{border-top:0}
+label.item{cursor:pointer}label.item:hover{background:var(--bg2)}.item>input{margin-top:2px}
+.item .main{flex:1;min-width:0}.item .t{font-weight:550}.item .sub{color:var(--muted);font-size:.86em;margin-top:1px}
+.item:has(>input[type=checkbox]:checked) .t{text-decoration:line-through;color:var(--muted)}.item:has(>input[type=checkbox]:checked) .pill{opacity:.45}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:3px 14px;margin:.4em 0}.kv>:nth-child(odd){color:var(--muted)}
+details{border:1px solid var(--bd);border-radius:8px;padding:6px 10px;margin:.5em 0}summary{cursor:pointer;font-weight:550}details[open]>summary{margin-bottom:6px}
 progress{width:100%;height:8px;accent-color:var(--acc)}
 pre,code{font:12px/1.45 ui-monospace,Menlo,monospace}pre{background:var(--bg2);padding:8px;border-radius:6px;overflow:auto;max-height:320px}
 .pc-status{font-size:.85em;color:var(--muted);margin:.3em 0}
@@ -85,11 +103,11 @@ function runtime() {
     }
   }
   const fragment = (html: string) => { const t = document.createElement("template"); t.innerHTML = html; return t.content; };
-  function render(html: string) {
+  function render(html: string, saved?: Record<string, unknown>) {
     const doc = new DOMParser().parseFromString(html, "text/html");
     doc.body.prepend(...doc.head.querySelectorAll("style,script"));
     morph(document.body, doc.body);
-    runScripts(); bind();
+    restore(saved); runScripts(); bind();
   }
   function patch(ops: Array<{ target?: string; mode?: string; html?: string }>) {
     for (const o of ops) {
@@ -113,23 +131,54 @@ function runtime() {
     if (!s?.classList.contains("pc-status")) { s = document.createElement("p"); s.className = "pc-status"; form.after(s); }
     s.textContent = text;
   }
-  document.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement, sub = (e as SubmitEvent).submitter as HTMLElement | null;
+  const formAction = (form: HTMLFormElement, sub?: HTMLElement | null) =>
+    sub?.dataset.action || form.dataset.action || form.getAttribute("name") || "submit";
+  function formValues(form: HTMLFormElement, sub?: HTMLElement | null) {
     const values: Record<string, unknown> = {};
     for (const [k, x] of new FormData(form, sub)) {
       const v = typeof x === "string" ? x : x.name;
       values[k] = k in values ? ([] as unknown[]).concat(values[k], v) : v;
     }
-    const action = sub?.dataset.action || form.dataset.action || form.getAttribute("name") || "submit";
+    return values;
+  }
+  // Put the user's saved answers (sent since the agent's last render) back into the forms.
+  function restore(saved: Record<string, any> | undefined) {
+    for (const form of document.forms) {
+      const v = saved?.[formAction(form)];
+      if (!v) continue;
+      for (const el of form.elements as unknown as HTMLInputElement[]) {
+        if (!el.name || el === document.activeElement) continue;
+        const cur = v[el.name], list = ([] as unknown[]).concat(cur ?? []).map(String);
+        if (el.type === "checkbox" || el.type === "radio") el.checked = list.includes(el.value);
+        else if (cur !== undefined && el.type !== "submit" && el.type !== "button") el.value = String(list[0]);
+      }
+    }
+  }
+  document.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement, sub = (e as SubmitEvent).submitter as HTMLElement | null;
+    const action = formAction(form, sub), values = formValues(form, sub);
     const wake = (sub?.dataset.wake ?? form.dataset.wake) !== "false";
     const fields = [...form.elements] as HTMLInputElement[];
     fields.forEach((f) => (f.disabled = true)); status(form, "Sending…");
     (window as any).paperclip.submit(values, { action, wake }).then(
-      () => status(form, "Sent to the agent."),
+      () => { fields.forEach((f) => (f.disabled = false)); status(form, "Sent to the agent."); },
       (err: Error) => { fields.forEach((f) => (f.disabled = false)); status(form, "Not sent: " + err.message); },
     );
   }, true);
+  // <form data-save>: every change is stored at once without waking the agent (checklists, notes).
+  const saveTimers = new WeakMap<HTMLFormElement, number>();
+  const autosave = (e: Event) => {
+    const form = (e.target as HTMLInputElement).form;
+    if (!form || !form.hasAttribute("data-save")) return;
+    clearTimeout(saveTimers.get(form));
+    saveTimers.set(form, setTimeout(() => {
+      (window as any).paperclip.submit(formValues(form), { action: formAction(form), wake: false })
+        .then(() => status(form, "Saved."), (err: Error) => status(form, "Not saved: " + err.message));
+    }, e.type === "change" ? 150 : 800) as unknown as number);
+  };
+  document.addEventListener("change", autosave);
+  document.addEventListener("input", autosave);
   document.addEventListener("click", (e) => {
     const t = e.target as Element;
     const b = t.closest<HTMLElement>("[data-submit]");
@@ -147,7 +196,7 @@ function runtime() {
   addEventListener("message", (e) => {
     if (e.source !== parent) return;
     const m = e.data || {};
-    if (m.t === "render") { document.documentElement.dataset.theme = m.theme; render(m.html); }
+    if (m.t === "render") { document.documentElement.dataset.theme = m.theme; render(m.html, m.saved); }
     else if (m.t === "patch") patch(m.ops);
     else if (m.t === "data") { data = m.data || {}; bind(); dataCbs.forEach((cb) => { try { cb(data); } catch (err) { console.error(err); } }); }
     else if (m.t === "ack") {

@@ -18,10 +18,13 @@ Plugin key `shellkube.livepanel`. Needs the carried stream-bus patch (upstream P
 
 ## Page API (inside the frame)
 - `<form data-action="x" [data-wake="false"]>`; submit buttons may carry their own `data-action`.
+- `<form data-save>`: each change is stored at once (no wake). Values stored since the agent's last render are put back into
+  the form on load (latest per action), so checklists keep their ticks across reloads.
 - `<button data-submit="approve" data-values='{"id":3}'>` outside forms.
 - `data-bind="a.b"` elements show `data.a.b` (progress/meter get `.value`); `paperclip.onData(cb)`, `paperclip.data`.
 - Scripts run on insert; there is no second `DOMContentLoaded`, so put scripts at the end of the body.
-- Built-in classes: `card row muted ok warn err badge primary`.
+- Built-in classes: `row spacer card muted`, `tiles > tile[.ok|.warn|.err|.info] > .v + .l`, `pill[.ok|.warn|.err|.info]`,
+  `list > label.item > input + .main(.t, .sub) + pill` (checked rows strike through), `kv`, `td.num`, `details`. Example in Bumble Bee's AGENTS.md.
 
 ## Build / install
 ```
