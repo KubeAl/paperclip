@@ -184,6 +184,7 @@ import {
   createPluginWorkerManager,
   type PluginWorkerManager,
 } from "./services/plugin-worker-manager.js";
+import { createPluginStreamBus } from "./services/plugin-stream-bus.js";
 import { createPluginJobScheduler } from "./services/plugin-job-scheduler.js";
 import { pluginJobStore } from "./services/plugin-job-store.js";
 import { createPluginToolDispatcher } from "./services/plugin-tool-dispatcher.js";
@@ -632,6 +633,14 @@ export async function createApp(
   app.use(runtimeConnectionIntentRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = opts.pluginWorkerManager ?? createPluginWorkerManager();
+  // Plugin SSE streams (ctx.streams.* -> usePluginStream). Same fix as upstream PR #8150.
+  const streamBus = createPluginStreamBus();
+  workerManager.setStreamNotificationHandler?.((pluginId, method, params) => {
+    const channel = String(params.channel ?? ""), companyId = String(params.companyId ?? "");
+    if (!channel || !companyId) return;
+    if (method === "streams.emit") streamBus.publish(pluginId, channel, companyId, params.event);
+    else streamBus.publish(pluginId, channel, companyId, null, method === "streams.open" ? "open" : "close");
+  });
   let lifecyclePluginsReady = false;
   const agentLifecycle = startAgentLifecycle(db, createLifecycleDriver(db, workerManager), () => lifecyclePluginsReady && !isWarmStandby() && !isIdleTaskDrainActive());
   const connectionIntentHeartbeat = heartbeatService(db, {
@@ -1044,7 +1053,7 @@ export async function createApp(
       { scheduler, jobStore },
       { workerManager },
       { toolDispatcher },
-      { workerManager },
+      { workerManager, streamBus },
       { toolGateway },
     ),
   );

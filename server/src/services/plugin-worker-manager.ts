@@ -803,6 +803,10 @@ export interface PluginWorkerManager {
     backgroundWork: "none" | "present" | "unknown"; pluginIds: string[];
   }>;
   releaseIdleSleep?(): void;
+  /** Route every worker's streams.open/emit/close to one handler (the app's PluginStreamBus). */
+  setStreamNotificationHandler?(
+    handler: ((pluginId: string, method: string, params: Record<string, unknown>) => void) | null,
+  ): void;
   /**
    * Register and start a worker for a plugin.
    *
@@ -3754,6 +3758,7 @@ export function createPluginWorkerManager(
   const workers = new Map<string, PluginWorkerHandle>();
   const configApplied = new Set<() => void>();
   let activeInspections = 0;
+  let streamHandler: ((pluginId: string, method: string, params: Record<string, unknown>) => void) | null = null;
   /** Per-plugin startup locks to prevent concurrent spawn races. */
   const startupLocks = new Map<string, Promise<PluginWorkerHandle>>();
   // The one shared, process-scoped aggregate route-slot controller. The manager
@@ -3782,6 +3787,9 @@ export function createPluginWorkerManager(
     releaseIdleSleep() {
       for (const worker of workers.values()) worker.releaseIdleSleep?.();
     },
+    setStreamNotificationHandler(handler) {
+      streamHandler = handler;
+    },
     async startWorker(
       pluginId: string,
       options: WorkerStartOptions,
@@ -3804,6 +3812,7 @@ export function createPluginWorkerManager(
         // Inject the shared process-scoped route-slot controller, unless the
         // caller already supplied its own (a test may inject its own).
         duplexRouteSlots,
+        onStreamNotification: (method, params) => streamHandler?.(pluginId, method, params),
         ...options,
       });
       workers.set(pluginId, handle);
