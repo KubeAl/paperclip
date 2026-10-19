@@ -1,7 +1,7 @@
 # Shellkube fork of Paperclip
 
 Fork: github.com/KubeAl/paperclip · Upstream: github.com/paperclipai/paperclip (default branch `master`)
-Runs the Mac instance `~/.paperclip/instances/default` (same embedded Postgres, port 54329) via LaunchAgent `ing.paperclip.paperclipai`.
+Runs the smini instance `~/.paperclip/instances/default` (moved from rahuls-mac-mini 2026-10-19) (same embedded Postgres, port 54329) via LaunchAgent `ing.paperclip.paperclipai`.
 
 ## Branches
 - `master` — pure mirror of upstream/master. Never commit here. Fast-forward only.
