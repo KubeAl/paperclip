@@ -1,0 +1,15 @@
+{
+  "name": "@shellkube/paperclip-plugin-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shellkube project dashboards: agents keep a dashboard on a project; users discuss values, set targets, move plan items",
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

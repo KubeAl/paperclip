@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""dashboard: read or update the project dashboard (plugin shellkube.dashboard).
+
+  dashboard get    [--project ID]            # dashboard + targets + offTarget + discussions, as JSON
+  dashboard update [--project ID] FILE|-     # JSON {"title"?, "sections"?: [...], "removeSections"?: [ids]}
+
+The project defaults to the project of $PAPERCLIP_TASK_ID. Uses PAPERCLIP_API_URL, PAPERCLIP_API_KEY,
+PAPERCLIP_AGENT_ID, PAPERCLIP_RUN_ID, PAPERCLIP_COMPANY_ID. Exit 1 on error.
+"""
+import argparse, json, os, sys, urllib.request, urllib.error
+
+E = os.environ
+
+
+def call(path, body=None):
+    req = urllib.request.Request(E["PAPERCLIP_API_URL"].rstrip("/") + path, method="POST" if body is not None else "GET",
+                                 data=None if body is None else json.dumps(body).encode(),
+                                 headers={"Authorization": "Bearer " + E["PAPERCLIP_API_KEY"], "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"dashboard: HTTP {e.code}: {e.read().decode()[:500]}")
+
+
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("cmd", choices=["get", "update"])
+ap.add_argument("file", nargs="?")
+ap.add_argument("--project")
+a = ap.parse_args()
+# The run belongs to the task's project; the dashboard may be another project's (--project).
+run_project = call(f"/api/issues/{E['PAPERCLIP_TASK_ID']}").get("projectId") if E.get("PAPERCLIP_TASK_ID") else None
+project = a.project or run_project
+if not project:
+    sys.exit("dashboard: no project: pass --project or run inside a task that has one")
+params = {"projectId": project}
+if a.cmd == "update":
+    params.update(json.load(sys.stdin if a.file in (None, "-") else open(a.file)))
+res = call("/api/plugins/tools/execute", {"tool": "shellkube.dashboard:dashboard_" + a.cmd, "parameters": params, "runContext": {
+    "agentId": E["PAPERCLIP_AGENT_ID"], "runId": E["PAPERCLIP_RUN_ID"], "companyId": E["PAPERCLIP_COMPANY_ID"], "projectId": run_project or project}})
+r = res.get("result", res) if isinstance(res, dict) else res
+if isinstance(r, dict) and r.get("error"):
+    sys.exit("dashboard: " + str(r["error"]))
+print(r.get("content", json.dumps(r)) if isinstance(r, dict) else r)
