@@ -27,7 +27,7 @@ ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDe
 ap.add_argument("cmd", choices=["get", "update"])
 ap.add_argument("file", nargs="?")
 ap.add_argument("--project")
-a = ap.parse_args()
+a = ap.parse_intermixed_args()
 # The run belongs to the task's project; the dashboard may be another project's (--project).
 run_project = call(f"/api/issues/{E['PAPERCLIP_TASK_ID']}").get("projectId") if E.get("PAPERCLIP_TASK_ID") else None
 project = a.project or run_project
