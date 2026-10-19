@@ -65,33 +65,48 @@ function Frame({ panel, submit }: {
     return () => window.removeEventListener("message", onMessage);
   }, [submit, sync]);
 
+  // allow-forms only lets the submit event fire; the frame CSP (form-action 'none') blocks any real submission.
   return (
-    <iframe ref={ref} title={panel.title || panel.name} srcDoc={SRCDOC} sandbox="allow-scripts" referrerPolicy="no-referrer"
+    <iframe ref={ref} title={panel.title || panel.name} srcDoc={SRCDOC} sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer"
       style={{ display: "block", width: "100%", height, border: 0, colorScheme: isDark() ? "dark" : "light" }} />
   );
 }
 
-function Panels({ companyId, issueId, onLost }: { companyId: string; issueId: string; onLost: () => void }) {
-  const { data, refresh } = usePluginData<PanelState[]>("panels", { companyId, issueId });
+// usePluginStream never reconnects by itself (error, server restart, plugin reload), so this part is
+// remounted after a pause. Kept apart from the frames so a reconnect does not reload them.
+function Watch({ companyId, issueId, onEvent, onLive, onLost }: {
+  companyId: string; issueId: string; onEvent: () => void; onLive: (live: boolean) => void; onLost: () => void;
+}) {
   const stream = usePluginStream<{ panel: string }>(`issue:${issueId}`, { companyId });
-  const action = usePluginAction("submit");
+  useEffect(() => { if (stream.events.length) onEvent(); }, [stream.events.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onLive(stream.connected);
+    if (stream.connected) onEvent();
+    else if (!stream.connecting) onLost();
+  }, [stream.connected, stream.connecting]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
 
-  useEffect(() => { if (stream.events.length) refresh(); }, [stream.events.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (stream.connected) refresh(); }, [stream.connected]); // eslint-disable-line react-hooks/exhaustive-deps
-  // usePluginStream never reconnects by itself (error, server restart, plugin reload): remount after a pause.
-  useEffect(() => { if (!stream.connected && !stream.connecting) onLost(); }, [stream.connected, stream.connecting, onLost]);
+function Panels({ companyId, issueId }: { companyId: string; issueId: string }) {
+  const { data, refresh } = usePluginData<PanelState[]>("panels", { companyId, issueId });
+  const action = usePluginAction("submit");
+  const [attempt, setAttempt] = useState(0);
+  const [live, setLive] = useState(false);
+  const onLost = useCallback(() => { setTimeout(() => setAttempt((a) => a + 1), 3000); }, []);
 
   const submitFor = useCallback((panel: string) =>
     (m: { action: string; values: unknown; wake: boolean }) => action({ companyId, issueId, panel, ...m }), [action, companyId, issueId]);
 
-  if (!data?.length) return <span data-livepanel-empty hidden />;
+  const watch = <Watch key={attempt} companyId={companyId} issueId={issueId} onEvent={refresh} onLive={setLive} onLost={onLost} />;
+  if (!data?.length) return <>{watch}<span data-livepanel-empty hidden /></>;
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {watch}
       {data.map((p) => (
         <section key={p.name}>
           <div style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, alignSelf: "center",
-              background: stream.connected ? "#22c55e" : "#94a3b8" }} title={stream.connected ? "live" : "reconnecting"} />
+              background: live ? "#22c55e" : "#94a3b8" }} title={live ? "live" : "reconnecting"} />
             <strong style={{ fontWeight: 600 }}>{p.title || (p.name === "main" ? "Live panel" : p.name)}</strong>
             <span>{new Date(p.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
@@ -103,13 +118,11 @@ function Panels({ companyId, issueId, onLost }: { companyId: string; issueId: st
 }
 
 export function LivePanels({ context }: PluginDetailTabProps) {
-  const [attempt, setAttempt] = useState(0);
-  const onLost = useCallback(() => { setTimeout(() => setAttempt((a) => a + 1), 3000); }, []);
   if (!context.companyId) return null;
   return (
     <>
       <style>{"div:has(> [data-livepanel-empty]){display:none}"}</style>
-      <Panels key={attempt} companyId={context.companyId} issueId={context.entityId} onLost={onLost} />
+      <Panels companyId={context.companyId} issueId={context.entityId} />
     </>
   );
 }

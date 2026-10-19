@@ -126,7 +126,7 @@ function runtime() {
     const fields = [...form.elements] as HTMLInputElement[];
     fields.forEach((f) => (f.disabled = true)); status(form, "Sending…");
     (window as any).paperclip.submit(values, { action, wake }).then(
-      () => status(form, wake ? "Sent. The agent was woken up." : "Sent."),
+      () => status(form, "Sent to the agent."),
       (err: Error) => { fields.forEach((f) => (f.disabled = false)); status(form, "Not sent: " + err.message); },
     );
   }, true);
