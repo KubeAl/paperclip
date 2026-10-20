@@ -35,6 +35,7 @@ export type TaskSidePanelTabPayload =
   | { kind: "subtasks" }
   | { kind: "artifacts" }
   | { kind: "agent-tasks" }
+  | { kind: "plugin"; slotKey: string }
   | { kind: "attachment"; attachmentId: string }
   | { kind: "skill"; skillId: string }
   | { kind: "issue-document"; documentKey: string }
@@ -96,6 +97,7 @@ function parsePayload(value: unknown): TaskSidePanelTabPayload | null {
   if (kind === "subtasks") return { kind };
   if (kind === "artifacts") return { kind };
   if (kind === "agent-tasks") return { kind };
+  if (kind === "plugin") return typeof input.slotKey === "string" && input.slotKey.length > 0 ? { kind, slotKey: input.slotKey } : null;
   if (kind === "attachment") {
     return typeof input.attachmentId === "string" && input.attachmentId.length > 0 ? { kind, attachmentId: input.attachmentId } : null;
   }
@@ -234,6 +236,10 @@ export function taskPanelAgentTasksTab(): SidePanelTabRecord<TaskSidePanelTabPay
 
 export function taskPanelArtifactsTab(): SidePanelTabRecord<TaskSidePanelTabPayload> {
   return { id: "artifacts", type: "artifacts", label: "Artifacts", closable: true, contentMode: "padded", payload: { kind: "artifacts" } };
+}
+
+export function taskPanelPluginTab(slotKey: string, label: string): SidePanelTabRecord<TaskSidePanelTabPayload> {
+  return { id: `plugin:${slotKey}`, type: "plugin", label, closable: true, contentMode: "padded", payload: { kind: "plugin", slotKey } };
 }
 
 export function taskPanelSkillTab(skillId: string, label = "Skill"): SidePanelTabRecord<TaskSidePanelTabPayload> {

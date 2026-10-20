@@ -159,12 +159,22 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
   const submitFor = useCallback((panel: string) =>
     (m: { action: string; values: unknown; wake: boolean }) => action({ companyId, issueId, panel, ...m }), [action, companyId, issueId]);
 
+  // Ask the host to open the side panel tab once per rendered panel version.
+  useEffect(() => {
+    for (const p of data ?? []) {
+      const seen = `livepanel-seen:${issueId}:${p.name}:${p.version}`;
+      if (sessionStorage.getItem(seen)) continue;
+      sessionStorage.setItem(seen, "1");
+      window.dispatchEvent(new CustomEvent("paperclip:open-plugin-tab", { detail: { issueId, slot: "shellkube.livepanel:panels" } }));
+    }
+  }, [data, issueId]);
+
   const watch = <Watch key={attempt} companyId={companyId} issueId={issueId} onEvent={refresh} onLive={setLive} onLost={onLost} />;
-  if (!data?.length) return <>{watch}<span data-livepanel-empty hidden /></>;
+  if (!data?.length) return <>{watch}<p style={{ fontSize: 13, opacity: 0.7, margin: 0 }}>No live panel on this task yet.</p></>;
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {watch}
-      {data.map((p) => (
+      {[...data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((p) => (
         <section key={p.name}>
           <div style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, alignSelf: "center",
@@ -183,10 +193,5 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
 
 export function LivePanels({ context }: PluginDetailTabProps) {
   if (!context.companyId) return null;
-  return (
-    <>
-      <style>{"div:has(> [data-livepanel-empty]){display:none}"}</style>
-      <Panels companyId={context.companyId} issueId={context.entityId} />
-    </>
-  );
+  return <Panels companyId={context.companyId} issueId={context.entityId} />;
 }

@@ -45,7 +45,7 @@ const manifest: PaperclipPluginManifestV1 = {
   ],
   ui: {
     slots: [
-      { type: "taskDetailView", id: "panels", displayName: "Live panel", exportName: "LivePanels", entityTypes: ["issue"] },
+      { type: "detailTab", id: "panels", displayName: "Live panel", exportName: "LivePanels", entityTypes: ["issue"] },
     ],
   },
 };

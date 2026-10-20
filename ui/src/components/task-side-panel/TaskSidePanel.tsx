@@ -27,6 +27,7 @@ import {
   ListChecks,
   ListTree,
   Plus,
+  Puzzle,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -55,6 +56,8 @@ import {
   type SidePanelTabRecord,
 } from "@/components/side-panel";
 import { Button } from "@/components/ui/button";
+import { usePanel } from "@/context/PanelContext";
+import { PluginSlotMount, usePluginSlots } from "@/plugins/slots";
 import {
   FILE_VIEWER_NAVIGATE_OPTIONS,
   getCurrentFileViewerSearch,
@@ -80,6 +83,7 @@ import {
   taskPanelAttachmentTab,
   taskPanelDocumentTab,
   taskPanelFilesTab,
+  taskPanelPluginTab,
   taskPanelPropertiesTab,
   taskPanelSkillTab,
   taskPanelSubtasksTab,
@@ -136,6 +140,7 @@ function tabIcon(tab: SidePanelTabRecord<TaskSidePanelTabPayload>): ReactNode {
     case "subtasks": return <ListTree />;
     case "artifacts": return <Box />;
     case "agent-tasks": return <ListChecks />;
+    case "plugin": return <Puzzle />;
     case "attachment": return <FileText />;
     case "files-browser": return <FolderOpen />;
     case "workspace-file": return <FileCode2 />;
@@ -348,6 +353,21 @@ export function TaskSidePanel({
     setLauncherOpen(false);
     controller.openTab(taskPanelBrowserTab(openBrowserId));
   }, [openBrowserId, controller.openTab]);
+  const { setPanelVisible } = usePanel();
+  // Plugin "detailTab" views open as side panel tabs. They stay mounted so a plugin can ask to be shown.
+  const { slots: pluginTabSlots } = usePluginSlots({ slotTypes: ["detailTab"], entityType: "issue", companyId: issue.companyId });
+  useEffect(() => {
+    const onOpenPluginTab = (event: Event) => {
+      const detail = (event as CustomEvent<{ issueId?: string; slot?: string }>).detail;
+      const slot = pluginTabSlots.find((candidate) => `${candidate.pluginKey}:${candidate.id}` === detail?.slot);
+      if (detail?.issueId !== issue.id || !slot) return;
+      setLauncherOpen(false);
+      controller.openTab(taskPanelPluginTab(`${slot.pluginKey}:${slot.id}`, slot.displayName));
+      if (!mobile) setPanelVisible(true);
+    };
+    window.addEventListener("paperclip:open-plugin-tab", onOpenPluginTab);
+    return () => window.removeEventListener("paperclip:open-plugin-tab", onOpenPluginTab);
+  }, [issue.id, controller.openTab, mobile, setPanelVisible, pluginTabSlots]);
   useEffect(() => {
     // Acknowledge only after selection and persistence commit. Clearing the
     // parent request earlier can replace the panel before its tab state lands.
@@ -589,6 +609,10 @@ export function TaskSidePanel({
     for (const [index, browser] of (browsersQuery.data ?? []).entries()) {
       primary.push({ id: `browser:${browser.id}`, label: (browsersQuery.data?.length ?? 0) > 1 ? `Browser ${index + 1}` : "Browser", description: browser.status, icon: <Globe />, alreadyOpen: controller.tabs.some(tab => tab.id === `browser:${browser.id}`) });
     }
+    for (const slot of pluginTabSlots) {
+      const id = `plugin:${slot.pluginKey}:${slot.id}`;
+      primary.push({ id, label: slot.displayName, icon: <Puzzle />, alreadyOpen: controller.tabs.some((tab) => tab.id === id) });
+    }
     if (fileTabsEnabled) {
       primary.push({ id: "files", label: "Files", icon: <FolderOpen />, shortcut: "G F", alreadyOpen: controller.tabs.some((tab) => tab.id === "files") });
     }
@@ -636,7 +660,7 @@ export function TaskSidePanel({
       });
     }
     return sections;
-  }, [browsersQuery.data, conversationAgentId, taskCount, taskLabel, tasksTab?.hasError, controller.tabs, documents, fileTabsEnabled, planDocument, recentFilesQuery.data, recentFilesQuery.isError, recentFilesQuery.isLoading, subtasksAvailable]);
+  }, [browsersQuery.data, conversationAgentId, taskCount, taskLabel, tasksTab?.hasError, controller.tabs, documents, fileTabsEnabled, planDocument, recentFilesQuery.data, recentFilesQuery.isError, recentFilesQuery.isLoading, subtasksAvailable, pluginTabSlots]);
 
   function selectLauncherItem(item: SidePanelLauncherItem) {
     markInteracted();
@@ -651,6 +675,7 @@ export function TaskSidePanel({
     }
     else if (item.id === "artifacts") controller.openTab(taskPanelArtifactsTab());
     else if (item.id === "agent-tasks") controller.openTab(taskPanelAgentTasksTab());
+    else if (item.id.startsWith("plugin:")) controller.openTab(taskPanelPluginTab(item.id.slice("plugin:".length), item.label));
     else if (item.id === "files") {
       controller.openTab(taskPanelFilesTab());
       viewer.openBrowse();
@@ -725,7 +750,7 @@ export function TaskSidePanel({
   let content: ReactNode;
   if (!activeTab) {
     content = <SidePanelLauncher sections={launcherSections} onSelect={selectLauncherItem} />;
-  } else if (activeTab.payload.kind === "browser") {
+  } else if (activeTab.payload.kind === "browser" || activeTab.payload.kind === "plugin") {
     content = null; // Mounted below independently of the selected tab.
   } else if (activeTab.payload.kind === "properties") {
     content = (
@@ -851,6 +876,15 @@ export function TaskSidePanel({
           contentMode === "padded" && "p-4",
         )}
       >
+        {pluginTabSlots.map((slot) => (
+          <div key={`${slot.pluginKey}:${slot.id}`} hidden={activeTab?.id !== `plugin:${slot.pluginKey}:${slot.id}`}>
+            <PluginSlotMount
+              slot={slot}
+              context={{ companyId: issue.companyId, projectId: issue.projectId ?? null, entityId: issue.id, entityType: "issue" }}
+              missingBehavior="placeholder"
+            />
+          </div>
+        ))}
         {controller.tabs.map(tab => tab.payload.kind === "browser" ? (
           <div key={tab.id} hidden={tab.id !== controller.activeTabId} className={cn("h-full min-h-0", tab.id !== controller.activeTabId && "hidden")}>
             <TaskBrowserPanel active={tab.id === controller.activeTabId} issueId={issue.id} browser={browsersQuery.data?.find(b => tab.payload.kind === "browser" && (b.id === tab.payload.browserId || b.sessionId === tab.payload.browserId))} accessError={browsersQuery.isError} onOpenActiveBrowser={newestLiveBrowser ? () => controller.openTab(taskPanelBrowserTab(newestLiveBrowser.id)) : undefined} />
