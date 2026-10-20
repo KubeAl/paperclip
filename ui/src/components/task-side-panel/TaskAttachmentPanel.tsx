@@ -13,9 +13,11 @@ import { attachmentDownloadPath, isMarkdownAttachment, isTextAttachment } from "
 import { queryKeys } from "@/lib/queryKeys";
 
 export const TEXT_PREVIEW_MAX_BYTES = 512 * 1024;
+// Self-contained HTML artifacts (e.g. Archify diagrams) inline their own viewer runtime (~0.8 MB).
+export const HTML_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Bound the actual response, not just producer-supplied attachment metadata. */
-export async function readTextPreview(response: Response) {
+export async function readTextPreview(response: Response, maxBytes = TEXT_PREVIEW_MAX_BYTES) {
   if (!response.ok) throw new Error(`Could not load file (${response.status}).`);
   if (!response.body) throw new Error("The file response is empty.");
   const reader = response.body.getReader();
@@ -27,7 +29,7 @@ export async function readTextPreview(response: Response) {
       const chunk = await reader.read();
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
-      if (bytes > TEXT_PREVIEW_MAX_BYTES) throw new Error("This file is too large to preview. Download it instead.");
+      if (bytes > maxBytes) throw new Error("This file is too large to preview. Download it instead.");
       text += decoder.decode(chunk.value, { stream: true });
     }
     text += decoder.decode();
@@ -78,13 +80,14 @@ export function TaskAttachmentPanel({ issueId, attachmentId }: { issueId: string
   });
   // Re-resolve against this task's authorized attachment list; never trust persisted URLs.
   const attachment = attachments.data?.find((item) => item.id === attachmentId);
-  const eligible = attachment && isTextAttachment(attachment) && attachment.byteSize <= TEXT_PREVIEW_MAX_BYTES;
+  const maxBytes = attachment && isHtmlPreview(attachment.contentType, attachment.originalFilename) ? HTML_PREVIEW_MAX_BYTES : TEXT_PREVIEW_MAX_BYTES;
+  const eligible = attachment && isTextAttachment(attachment) && attachment.byteSize <= maxBytes;
   const content = useQuery({
     queryKey: ["task-text-attachment", issueId, attachmentId],
     queryFn: async ({ signal }) => readTextPreview(await fetch(
       `/api/attachments/${encodeURIComponent(attachmentId)}/content`,
       { signal, credentials: "same-origin" },
-    )),
+    ), maxBytes),
     enabled: Boolean(eligible),
     retry: false,
   });
