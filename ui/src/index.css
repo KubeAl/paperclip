@@ -2379,6 +2379,26 @@ a.paperclip-mention-chip[data-mention-kind="agent"]::before {
   height: auto;
 }
 
+.paperclip-mermaid-expand {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.paperclip-mermaid-expand svg {
+  max-height: 32rem;
+}
+
+.paperclip-mermaid-full svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
 .paperclip-mermaid-status {
   margin: 0 0 0.45rem;
   font-size: 0.75rem;

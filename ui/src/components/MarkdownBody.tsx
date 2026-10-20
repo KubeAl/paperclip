@@ -4,6 +4,7 @@ import { Check, Copy, ExternalLink, WrapText } from "lucide-react";
 import Markdown, { defaultUrlTransform, type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { GithubIcon } from "@/components/icons/github-icon";
 import { Link, useCaseHref } from "@/lib/router";
 import { useTheme } from "../context/ThemeContext";
@@ -726,6 +727,7 @@ function MermaidDiagramBlock({ source, darkMode }: { source: string; darkMode: b
   const renderId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -740,6 +742,9 @@ function MermaidDiagramBlock({ source, darkMode }: { source: string; darkMode: b
           theme: darkMode ? "dark" : "default",
           fontFamily: "inherit",
           suppressErrorRendering: true,
+          // Default 700x500 charts render tall and pale inside comment bubbles.
+          xyChart: { height: 300 },
+          themeVariables: { xyChart: { plotColorPalette: "#2563eb, #f59e0b, #10b981, #ef4444, #8b5cf6, #0891b2" } },
         });
         const rendered = await mermaid.render(`paperclip-mermaid-${renderId}`, source);
         if (!active) return;
@@ -762,7 +767,17 @@ function MermaidDiagramBlock({ source, darkMode }: { source: string; darkMode: b
   return (
     <div className="paperclip-mermaid">
       {svg ? (
-        <div dangerouslySetInnerHTML={{ __html: svg }} />
+        <>
+          <button type="button" className="paperclip-mermaid-expand" title="Click to expand" onClick={() => setExpanded(true)}>
+            <div dangerouslySetInnerHTML={{ __html: svg }} />
+          </button>
+          <Dialog open={expanded} onOpenChange={setExpanded}>
+            <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-[95vw] max-h-[90vh] overflow-auto p-4 pt-10">
+              <DialogTitle className="sr-only">Diagram</DialogTitle>
+              <div className="paperclip-mermaid-full" dangerouslySetInnerHTML={{ __html: svg }} />
+            </DialogContent>
+          </Dialog>
+        </>
       ) : (
         <>
           <p className={cn("paperclip-mermaid-status", error && "paperclip-mermaid-status-error")}>
