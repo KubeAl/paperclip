@@ -825,6 +825,7 @@ export function pluginRoutes(
       return '"runContext.runId" does not belong to "runContext.agentId"';
     }
 
+    if (!runContext.projectId) return null;
     const [project] = await db
       .select({ companyId: projects.companyId })
       .from(projects)
@@ -1036,9 +1037,10 @@ export function pluginRoutes(
       return;
     }
 
-    if (!runContext.agentId || !runContext.runId || !runContext.companyId || !runContext.projectId) {
+    // projectId is optional: agent chats and other project-less tasks run without one.
+    if (!runContext.agentId || !runContext.runId || !runContext.companyId) {
       res.status(400).json({
-        error: '"runContext" must include agentId, runId, companyId, and projectId',
+        error: '"runContext" must include agentId, runId, and companyId',
       });
       return;
     }
