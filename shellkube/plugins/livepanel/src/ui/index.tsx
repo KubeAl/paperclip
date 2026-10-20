@@ -1,10 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePluginAction, usePluginData, usePluginStream, type PluginDetailTabProps } from "@paperclipai/plugin-sdk/ui";
 import { SRCDOC } from "./frame";
+import { defineRegistry, JSONUIProvider, Renderer, useBoundProp, useFieldValidation, useValidation } from "@json-render/react";
+import { shadcnComponents } from "@json-render/shadcn";
+import type { Spec } from "@json-render/core";
+import { catalog, NAMES } from "../catalog";
+
+// submit is handled per panel by JSONUIProvider handlers, so the registry only carries components.
+const { registry } = defineRegistry(catalog, {
+  components: { ...Object.fromEntries(NAMES.map((n) => [n, shadcnComponents[n]])), DateInput },
+} as Parameters<typeof defineRegistry<typeof catalog>>[1]);
+
+// Same look as the shadcn Input, with the browser's date picker.
+function DateInput({ props, bindings }: { props: Record<string, any>; bindings?: Record<string, string> }) {
+  const [value, setValue] = useBoundProp<string>(props.value ?? undefined, bindings?.value);
+  const { errors, validate } = useFieldValidation(bindings?.value ?? "", props.checks?.length ? { checks: props.checks, validateOn: "change" } : undefined);
+  return (
+    <div className="space-y-2">
+      <label htmlFor={props.name} className="flex items-center gap-2 text-sm leading-none font-medium">{props.label}</label>
+      <input id={props.name} name={props.name} type="date" min={props.min ?? undefined} max={props.max ?? undefined} value={value ?? ""}
+        onChange={(e) => { setValue(e.target.value); validate(); }}
+        className="border-input h-9 w-full max-w-60 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] dark:bg-input/30 md:text-sm" />
+      {errors.length > 0 && <p className="text-sm text-destructive">{errors[0]}</p>}
+    </div>
+  );
+}
 
 type Op = { target?: string; mode?: string; html?: string };
 type PanelState = {
-  name: string; title: string; html: string; patches: Op[]; data: Record<string, unknown>;
+  name: string; title: string; html: string; spec?: Spec; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; updatedAt: string; saved: Record<string, unknown>;
 };
 
@@ -72,6 +96,44 @@ function Frame({ panel, submit }: {
   );
 }
 
+// Agent spec rendered with native components: no frame needed, the spec is data, not code.
+// Hands the provider's validateAll to the submit handler, so required fields block a submit.
+function ValidationBridge({ into }: { into: { current: () => boolean } }) {
+  const v = useValidation();
+  into.current = v.validateAll;
+  return null;
+}
+
+function SpecPanel({ panel, submit }: {
+  panel: PanelState;
+  submit: (m: { action: string; values: unknown; wake: boolean }) => Promise<unknown>;
+}) {
+  const [sent, setSent] = useState("");
+  const validateAll = useRef<() => boolean>(() => true);
+  const handlers = {
+    submit: async (params: Record<string, unknown>) => {
+      const action = String(params.action ?? "submit");
+      if (action !== "cancel" && !validateAll.current()) { setSent("Fix the marked fields first."); return; }
+      setSent("Sending…");
+      try {
+        await submit({ action, values: params.values ?? {}, wake: params.wake !== false });
+        setSent(`Sent: ${action}`);
+      } catch (err) {
+        setSent(`Not sent: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  };
+  return (
+    <div>
+      <JSONUIProvider registry={registry} initialState={panel.spec!.state ?? {}} handlers={handlers}>
+        <Renderer spec={panel.spec!} registry={registry} />
+        <ValidationBridge into={validateAll} />
+      </JSONUIProvider>
+      {sent && <p style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>{sent}</p>}
+    </div>
+  );
+}
+
 // usePluginStream never reconnects by itself (error, server restart, plugin reload), so this part is
 // remounted after a pause. Kept apart from the frames so a reconnect does not reload them.
 function Watch({ companyId, issueId, onEvent, onLive, onLost }: {
@@ -110,7 +172,9 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
             <strong style={{ fontWeight: 600 }}>{p.title || (p.name === "main" ? "Live panel" : p.name)}</strong>
             <span>{new Date(p.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
-          <Frame panel={p} submit={submitFor(p.name)} />
+          {p.spec
+            ? <SpecPanel key={p.version} panel={p} submit={submitFor(p.name)} />
+            : <Frame panel={p} submit={submitFor(p.name)} />}
         </section>
       ))}
     </div>

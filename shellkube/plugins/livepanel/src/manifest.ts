@@ -19,9 +19,10 @@ const manifest: PaperclipPluginManifestV1 = {
   tools: [
     {
       name: "live_render", displayName: "Live panel: render",
-      description: "Show or replace an HTML panel on the task. The page updates in place (typed input is kept). Empty html removes the panel. Forms submit to the agent; see live_input.",
+      description: "Show or replace an HTML panel on the task. The page updates in place (typed input is kept). Empty html removes the panel. Forms submit to the agent; see live_input. Or pass spec (json-render JSONL patches) instead of html to show native Paperclip form components.",
       parametersSchema: { type: "object", required: ["issueId", "html"], properties: {
         issueId, panel, title: { type: "string" }, html: { type: "string" },
+        spec: { type: "string", description: "json-render spec as JSONL patches (see the live panel spec doc). Replaces html." },
         data: { type: "object", description: "Initial data for [data-bind] elements and paperclip.onData." } } },
     },
     {

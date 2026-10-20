@@ -15,5 +15,7 @@ for (const name of ["manifest", "worker"]) {
 }
 await esbuild.build({ entryPoints: [path.join(here, "src/ui/index.tsx")], outfile: path.join(here, "dist/ui/index.js"),
   bundle: true, format: "esm", platform: "browser", target: "es2022", jsx: "automatic",
+  // Keep whitespace: the host rewrites imports by matching ` from "react"` (with the space).
+  minifyIdentifiers: true, minifySyntax: true,
   external: ["react", "react-dom", "react/jsx-runtime", "@paperclipai/plugin-sdk/ui"], logLevel: "warning" });
 console.log("livepanel built");

@@ -1,9 +1,13 @@
 import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
+import { autoFixSpec, compileSpecStream, formatSpecIssues, resolveElementProps, validateSpec, type Spec } from "@json-render/core";
+import type { ZodType } from "zod";
+import { catalog } from "./catalog";
+import { expandShort, isShort } from "./short";
 
 type Op = { target?: string; mode?: "inner" | "outer" | "append" | "prepend" | "text" | "remove"; html?: string };
 type Input = { seq: number; action: string; values: unknown; userId: string; at: string; wake: boolean };
 type Panel = {
-  name: string; title: string; html: string; patches: Op[]; data: Record<string, unknown>;
+  name: string; title: string; html: string; spec?: Spec; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; seq: number; inputs: Input[]; agentId: string; updatedAt: string;
   renderSeq?: number; // input seq at the last render: later inputs are restored into that render's forms
 };
@@ -26,6 +30,37 @@ function obj(v: unknown, label: string): Record<string, unknown> | undefined {
   if (typeof v !== "object" || Array.isArray(v)) throw new Error(`${label} must be an object`);
   if (JSON.stringify(v).length > MAX_JSON) throw new Error(`${label} is larger than ${MAX_JSON} bytes`);
   return v as Record<string, unknown>;
+}
+// A json-render spec: the short form (short.ts), JSONL patches, or one full spec object.
+function parseSpec(v: unknown): Spec {
+  let raw = v;
+  if (typeof v === "string") {
+    if (v.length > MAX_HTML) throw new Error(`spec is larger than ${MAX_HTML} bytes`);
+    const first = v.trim().split("\n")[0] ?? "";
+    raw = /^\{\s*"op"/.test(first) ? compileSpecStream(v) : JSON.parse(v);
+  }
+  if (isShort(raw)) raw = expandShort(raw);
+  const { spec } = autoFixSpec(raw as Spec);
+  const issues = validateSpec(spec);
+  const props = catalog.validate(spec);
+  const errors = [
+    ...(issues.valid ? [] : [formatSpecIssues(issues.issues)]),
+    ...(props.success ? [] : props.error!.issues.map((i) => `${i.path.join(".")}: ${i.message}`)),
+  ];
+  // catalog.validate checks component names only; check each element's props against its component.
+  const comps = catalog.data.components as Record<string, { props: ZodType }>;
+  for (const [k, el] of Object.entries(spec.elements ?? {})) {
+    const def = comps[el.type];
+    if (!def) continue;
+    // Catalog props are .nullable(), which the prompt shows as optional: treat missing as null.
+    const resolved = resolveElementProps(el.props ?? {}, { stateModel: spec.state ?? {} });
+    const shape = (def.props as unknown as { shape?: Record<string, unknown> }).shape ?? {};
+    const filled = Object.fromEntries([...new Set([...Object.keys(shape), ...Object.keys(resolved)])].map((p) => [p, resolved[p] ?? null]));
+    const r = def.props.safeParse(filled);
+    if (!r.success) errors.push(...r.error.issues.map((i) => `elements.${k}.props.${i.path.join(".")}: ${i.message}`));
+  }
+  if (errors.length) throw new Error(`spec is invalid:\n${errors.join("\n")}`);
+  return spec;
 }
 const key = (issueId: string) => ({ scopeKind: "issue" as const, scopeId: issueId, stateKey: "panels" });
 const channel = (issueId: string) => `issue:${issueId}`;
@@ -75,17 +110,22 @@ const plugin = definePlugin({
       const p = params as Record<string, unknown>;
       const issueId = uuid(p.issueId, "issueId"), name = panelName(p.panel), html = str(p.html);
       if (html.length > MAX_HTML) return { error: `html is larger than ${MAX_HTML} bytes; send less or use live_patch` };
+      let spec: Spec | undefined;
+      try { spec = p.spec === undefined || p.spec === "" ? undefined : parseSpec(p.spec); }
+      catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
       const data = obj(p.data, "data");
       const next = await update(issueId, run.companyId, name, (cur, all) => {
-        if (!html.trim()) return null;
+        if (!html.trim() && !spec) return null;
         if (!cur && Object.keys(all).length >= MAX_PANELS) throw new Error(`at most ${MAX_PANELS} panels per task`);
         return {
-          name, title: str(p.title) || cur?.title || "", html, patches: [], data: data ?? cur?.data ?? {},
+          name, title: str(p.title) || cur?.title || "", html: spec ? "" : html, spec, patches: [], data: data ?? cur?.data ?? {},
           version: (cur?.version ?? 0) + 1, rev: 0, seq: cur?.seq ?? 0, renderSeq: cur?.seq ?? 0, inputs: cur?.inputs ?? [],
           agentId: run.agentId, updatedAt: "",
         };
       });
-      return { content: next ? `Panel "${name}" shown (version ${next.version}).` : `Panel "${name}" removed.` };
+      if (!next) return { content: `Panel "${name}" removed.` };
+      // Agents tend to stop here; remind them so the task does not wake them again.
+      return { content: `Panel "${name}" shown (version ${next.version}). Finish your run as usual: post your comment and set the task status.` };
     });
 
     ctx.tools.register("live_patch", {
@@ -102,6 +142,7 @@ const plugin = definePlugin({
       if (JSON.stringify(ops).length > MAX_HTML) return { error: `ops are larger than ${MAX_HTML} bytes` };
       const next = await update(issueId, run.companyId, name, (cur) => {
         if (!cur) throw new Error(`no panel "${name}"; call live_render first`);
+        if (cur.spec) throw new Error(`panel "${name}" is a spec panel; call live_render with the new spec`);
         if (cur.patches.length + ops.length > MAX_PATCHES) throw new Error(`more than ${MAX_PATCHES} patches since the last render; call live_render with the whole page`);
         return { ...cur, patches: [...cur.patches, ...ops], data: data ? { ...cur.data, ...data } : cur.data };
       });

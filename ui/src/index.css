@@ -1,5 +1,8 @@
 @import "./motion-tokens.css";
 @import "tailwindcss";
+/* Live panel plugin renders json-render shadcn components inside the host page. */
+@source "../../shellkube/plugins/livepanel/node_modules/@json-render/shadcn/dist";
+@source "../../shellkube/plugins/livepanel/src/ui";
 @plugin "@tailwindcss/typography";
 
 @font-face {

@@ -2,6 +2,7 @@
 """live-panel: show live HTML on your current Paperclip task (plugin shellkube.livepanel).
 
   live-panel render [--panel P] [--title T] [--data JSON] [FILE|-]   # whole page; empty page removes the panel
+  live-panel spec   [--panel P] [--title T] [FILE|-]                 # form as a short JSON spec instead of HTML (doc: live-panel-spec.md)
   live-panel patch  [--panel P] --target CSS [--mode inner|outer|append|prepend|text|remove] [FILE|-|--html H]
   live-panel data   [--panel P] JSON                                  # shallow-merge into the panel data
   live-panel input  [--panel P] [--after N] [--wait SECONDS]          # what the user submitted (wait <= 25)
@@ -31,7 +32,7 @@ def read(src):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["render", "patch", "data", "input"])
+    ap.add_argument("cmd", choices=["render", "spec", "patch", "data", "input"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--issue", default=E.get("PAPERCLIP_TASK_ID"))
     ap.add_argument("--panel", default="main")
@@ -50,6 +51,9 @@ def main():
         tool, p["html"] = "live_render", read(a.arg)
         if a.title: p["title"] = a.title
         if a.data: p["data"] = json.loads(a.data)
+    elif a.cmd == "spec":
+        tool, p["spec"] = "live_render", read(a.arg)
+        if a.title: p["title"] = a.title
     elif a.cmd == "patch":
         tool, html = "live_patch", a.html if a.html is not None else ("" if a.mode == "remove" else read(a.arg))
         p["ops"] = [{"target": a.target, "mode": a.mode, "html": html}] if a.target else []
