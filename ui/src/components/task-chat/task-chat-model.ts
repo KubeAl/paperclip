@@ -12,6 +12,7 @@
  * inventory for the mapping. No timing/motion values live here — those are
  * CSS motion tokens in ui/src/index.css.
  */
+import type { CodeStep } from "./describe-code-step";
 import type {
   TaskBrowser,
   IssueAttachment,
@@ -205,6 +206,8 @@ export interface TaskChatToolItem {
   diff?: TaskChatDiff;
   /** Resolved permission decision badge, when one applied. */
   decision?: "allowed" | "rejected";
+  /** Plain-language label for a code-running call (see describe-code-step). */
+  step?: CodeStep;
 }
 
 /**

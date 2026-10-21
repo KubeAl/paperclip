@@ -5,6 +5,7 @@
  * thinking → tool → diff → responding while a run is in flight, rather than
  * only showing a response after the turn settles.
  */
+import { describeCodeStep, type CodeStep } from "./describe-code-step";
 import type { TranscriptEntry } from "@/adapters";
 import type {
   TaskChatDiff,
@@ -150,6 +151,12 @@ const TARGET_KEYS = [
 ] as const;
 
 const TARGET_MAX = 96;
+
+/** Python-cell tools carry `{ code }`; dedicated tools (Bash, Read…) already label themselves. */
+function describeToolInput(input: unknown): CodeStep | undefined {
+  const code = input && typeof input === "object" ? (input as { code?: unknown }).code : undefined;
+  return (typeof code === "string" && describeCodeStep(code)) || undefined;
+}
 
 function clip(text: string, max: number): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
@@ -788,6 +795,7 @@ export function transcriptToTaskChatItems(
             name: toolDisplayName(entry.name),
             rawName: entry.name ?? undefined,
             target: summarizeToolInput(entry.input),
+            step: describeToolInput(entry.input),
             status: "in_progress",
           });
           toolIndexById.set(toolCallId, items.length - 1);

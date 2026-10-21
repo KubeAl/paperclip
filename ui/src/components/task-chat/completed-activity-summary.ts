@@ -8,6 +8,7 @@ import {
 import { protocolActivityPresentation, providerNoticeSeverity } from "./task-chat-activity-presentation";
 
 type Activity = TaskChatActivityPhaseItem["items"][number];
+const LOW_SIGNAL_STEPS = new Set(["Checked results", "Saved notes", "Read Paperclip"]);
 const labels: Record<ToolFamily, string> = {
   terminal: "Ran commands",
   grep: "Searched files",
@@ -54,6 +55,11 @@ export function completedActivitySummary(items: Activity[]) {
         name: item.rawName ?? item.name,
         target: item.target,
       });
+      if (item.step) {
+        // Housekeeping steps go last so the summary leads with the real work.
+        add(item.step.done, p.icon, LOW_SIGNAL_STEPS.has(item.step.done) ? 1_000 + order : order);
+        continue;
+      }
       tools.push({ ...p, order, completed: item.status === "completed" });
     } else if (item.kind === "protocol") {
       if (

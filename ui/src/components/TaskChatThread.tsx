@@ -36,6 +36,12 @@ import {
   TaskChatTurnStatusIsland,
   taskChatTurnStatusModel,
 } from "@/components/task-chat/TaskChatTurnStatusIsland";
+import {
+  TaskChatAttentionLine,
+  liveRunAttention,
+  useNow,
+  waitingAttention,
+} from "@/components/task-chat/TaskChatAttentionLine";
 import { commentsToTaskChatItems } from "@/components/task-chat/task-chat-adapter";
 import {
   taskChatStatusRelevance,
@@ -2411,6 +2417,12 @@ export function TaskChatThread(props: TaskChatThreadProps) {
         : taskChatTurnStatusModel(tailItems),
     [tailItems, tailStatus],
   );
+  const attentionNow = useNow(Boolean(liveRun) || Boolean(interactions?.some((interaction) => interaction.status === "pending")));
+  const attention = liveRun
+    ? liveRun.status === "running"
+      ? liveRunAttention(tailAllEntries, tailStartedAtMs, attentionNow)
+      : null
+    : waitingAttention(interactions ?? [], currentUserId, userLabelMap, attentionNow);
   const pendingRuntimeRequest = latestPendingRuntimeRequest(tailItems);
   const handleRuntimeRequestDecision = useCallback(
     async (
@@ -3180,6 +3192,12 @@ export function TaskChatThread(props: TaskChatThreadProps) {
             {showComposer ? (
               <TaskChatComposerDock mobile={isMobile} streamlined={streamlinedUiEnabled} concealed={!historyRevealed}>
                 {composerAccessory}
+                {attention ? (
+                  <TaskChatAttentionLine
+                    signal={attention}
+                    onStop={attention.tone === "warning" && liveRun && onCancelRun ? () => void onCancelRun() : undefined}
+                  />
+                ) : null}
                 {tailTurnStatus ? (
                   <TaskChatTurnStatusIsland model={tailTurnStatus} />
                 ) : null}

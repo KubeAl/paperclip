@@ -26,6 +26,8 @@ import { toolActivityPresentation } from "./tool-taxonomy";
 
 type Activity = TaskChatActivityPhaseItem["items"][number];
 
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+
 function presentation(item: Activity, active: boolean) {
   if (item.kind === "tool") {
     const tool = toolActivityPresentation({
@@ -34,6 +36,22 @@ function presentation(item: Activity, active: boolean) {
     });
     const running =
       active && (item.status === "pending" || item.status === "in_progress");
+    if (item.step) {
+      return {
+        icon: tool.icon,
+        label:
+          item.status === "failed"
+            ? `Failed: ${lowerFirst(item.step.running)}`
+            : item.status === "interrupted"
+              ? `Stopped: ${lowerFirst(item.step.running)}`
+              : running
+                ? item.step.running
+                : item.step.done,
+        target: item.step.target,
+        mono: true,
+        running,
+      };
+    }
     return {
       icon: tool.icon,
       label:
