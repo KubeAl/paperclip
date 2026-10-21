@@ -18131,6 +18131,59 @@ export function issueRoutes(
     res.json(bundle);
   });
 
+  // Move a message and everything after it into a new sub-task. No agent is woken.
+  router.post("/issues/:id/split", async (req, res) => {
+    if (req.actor.type !== "board" || !req.actor.userId) throw forbidden("Board user access required");
+    const parent = await svc.getById(req.params.id as string);
+    if (!parent) throw notFound("Task not found");
+    assertCompanyAccess(req, parent.companyId);
+    if (!(await assertIssueReadAllowed(req, res, parent))) return;
+    const decision = await access.decide({
+      actor: req.actor, action: "issue:mutate",
+      resource: {
+        type: "issue", companyId: parent.companyId, issueId: parent.id,
+        projectId: parent.projectId, parentIssueId: parent.parentId,
+        assigneeAgentId: parent.assigneeAgentId, assigneeUserId: parent.assigneeUserId, status: parent.status,
+      },
+    });
+    if (!decision.allowed) throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
+    const fromCommentId = typeof req.body?.fromCommentId === "string" ? req.body.fromCommentId : "";
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    if (!fromCommentId || !title) throw badRequest("fromCommentId and title are required");
+    const [from] = await db.select({ createdAt: issueComments.createdAt }).from(issueComments)
+      .where(and(eq(issueComments.id, fromCommentId), eq(issueComments.issueId, parent.id), isNull(issueComments.deletedAt)));
+    if (!from) throw notFound("Message not found on this task");
+    const [active] = await db.select({ id: heartbeatRuns.id }).from(heartbeatRuns)
+      .where(and(eq(heartbeatRuns.issueId, parent.id), inArray(heartbeatRuns.status, ["queued", "scheduled_retry", "running"])))
+      .limit(1);
+    if (active) throw conflict("The agent is still working on this task. Wait for it to finish, or stop it, then split.");
+
+    const child = await db.transaction(async (tx) => {
+      const created = await svc.create(parent.companyId, {
+        title, parentId: parent.id, projectId: parent.projectId, goalId: parent.goalId,
+        assigneeAgentId: parent.assigneeAgentId ?? parent.conversationAgentId ?? null,
+        assigneeUserId: parent.assigneeAgentId ? null : parent.assigneeUserId,
+        status: parent.status === "done" ? "done" : "in_review",
+        description: `Continued from ${parent.identifier ?? "the parent task"}. The conversation below was moved here from that task.`,
+        createdByUserId: req.actor.userId,
+      }, tx);
+      const T = sql`(select created_at from issue_comments where id = ${fromCommentId})`;
+      await tx.execute(sql`update issue_comments set issue_id = ${created.id} where issue_id = ${parent.id} and created_at >= ${T}`);
+      await tx.execute(sql`update issue_attachments set issue_id = ${created.id} where issue_id = ${parent.id}
+        and issue_comment_id in (select id from issue_comments where issue_id = ${created.id})`);
+      await tx.execute(sql`update issue_thread_interactions set issue_id = ${created.id} where issue_id = ${parent.id} and created_at >= ${T}`);
+      // Runs stay bound to the parent (immutable); their activity rows move, which links them to the child.
+      await tx.execute(sql`update activity_log set entity_id = ${created.id} where entity_type = 'issue' and entity_id = ${parent.id} and created_at >= ${T}`);
+      await tx.execute(sql`update issues set conversation_boundary_comment_id = null where id = ${parent.id}
+        and conversation_boundary_comment_id in (select id from issue_comments where issue_id = ${created.id})`);
+      return created;
+    });
+    await logActivity(db, { companyId: parent.companyId, actorType: "user", actorId: req.actor.userId,
+      action: "issue.split", entityType: "issue", entityId: parent.id,
+      details: { childIssueId: child.id, fromCommentId, fromCreatedAt: from.createdAt.toISOString() } });
+    res.json(child);
+  });
+
   router.get("/companies/:companyId/chats", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);

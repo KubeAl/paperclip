@@ -468,6 +468,18 @@ export function activityService(db: Db) {
                   and ${activityLog.runId} = ${heartbeatRuns.id}
               )`,
             ),
+            // Runs whose conversation was moved to a sub-task (POST /issues/:id/split) show there, not here.
+            sql`not exists (
+              select 1 from ${activityLog} s
+              where s.company_id = ${companyId} and s.entity_type = 'issue' and s.entity_id = ${issueId}
+                and s.action = 'issue.split'
+                and ${heartbeatRuns.createdAt} >= (s.details ->> 'fromCreatedAt')::timestamptz
+                and ${heartbeatRuns.createdAt} < s.created_at
+                and not exists (
+                  select 1 from ${activityLog} a2
+                  where a2.entity_type = 'issue' and a2.entity_id = ${issueId} and a2.run_id = ${heartbeatRuns.id}
+                )
+            )`,
           ),
         )
         .orderBy(desc(heartbeatRuns.createdAt));

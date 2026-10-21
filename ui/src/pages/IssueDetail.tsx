@@ -1197,7 +1197,7 @@ type IssueDetailChatTabProps = {
   browsers?: import("@paperclipai/shared").TaskBrowser[];
   onOpenBrowser?: (browserId: string) => void;
   onOpenSkill?: (skillId: string, name: string) => void;
-  onSplitMessage?: (text: string) => void;
+  onSplitMessage?: (commentId: string, text: string) => void;
   issueId: string;
   companyId: string;
   projectId: string | null;
@@ -3901,16 +3901,26 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
     if (!issue) return;
     openNewIssue(buildSubIssueDefaultsForViewer(issue, currentUserId));
   }, [currentUserId, issue, openNewIssue]);
-  const openSplitTask = useCallback((text: string) => {
-    if (!issue) return;
+  const [splitFrom, setSplitFrom] = useState<{ commentId: string; title: string } | null>(null);
+  const [splitPending, setSplitPending] = useState(false);
+  const openSplitTask = useCallback((commentId: string, text: string) => {
     const firstLine = text.split("\n").map((line) => line.replace(/[#>*_`]/g, "").trim()).find(Boolean) ?? "";
-    openNewIssue({
-      ...buildSubIssueDefaultsForViewer(issue, currentUserId),
-      title: firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine,
-      description: text,
-      navigateOnCreate: true,
-    });
-  }, [currentUserId, issue, openNewIssue]);
+    setSplitFrom({ commentId, title: firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine });
+  }, []);
+  const submitSplit = useCallback(async () => {
+    if (!issue || !splitFrom?.title.trim()) return;
+    setSplitPending(true);
+    try {
+      const created = await issuesApi.split(issue.id, splitFrom.commentId, splitFrom.title.trim());
+      setSplitFrom(null);
+      await queryClient.invalidateQueries();
+      navigate(createIssueDetailPath(created.identifier ?? created.id));
+    } catch (error) {
+      pushToast({ title: "Couldn’t split the task", body: error instanceof Error ? error.message : String(error), tone: "error" });
+    } finally {
+      setSplitPending(false);
+    }
+  }, [issue, splitFrom, queryClient, navigate, pushToast]);
 
   const commentReassignOptions = useMemo(() => {
     const options: Array<{ id: string; label: string; searchText?: string }> =
@@ -8414,6 +8424,31 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
               </TabsContent>
             )}
           </Tabs>
+
+          <Dialog open={splitFrom !== null} onOpenChange={(open) => { if (!open) setSplitFrom(null); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Move to a new sub-task</DialogTitle>
+                <DialogDescription>
+                  This message and everything after it move to a new sub-task. The agent does not start again; reply there to continue.
+                </DialogDescription>
+              </DialogHeader>
+              <input
+                autoFocus
+                aria-label="New task title"
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={splitFrom?.title ?? ""}
+                onChange={(event) => setSplitFrom((current) => current && { ...current, title: event.target.value })}
+                onKeyDown={(event) => { if (event.key === "Enter") void submitSplit(); }}
+              />
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setSplitFrom(null)}>Cancel</Button>
+                <Button disabled={splitPending || !splitFrom?.title.trim()} onClick={() => void submitSplit()}>
+                  {splitPending ? "Moving…" : "Move"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <TaskTreeControlDialog
             open={treeControlOpen}

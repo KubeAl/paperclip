@@ -422,8 +422,8 @@ export type TaskChatThreadProps = ComponentProps<typeof IssueChatThread> & {
   initialHistoryError?: boolean;
   onRetryInitialHistory?: () => void;
   onOpenSkill?: (skillId: string, name: string) => void;
-  /** Opens the new-sub-task form prefilled from a message. */
-  onSplitMessage?: (text: string) => void;
+  /** Moves a message and everything after it into a new sub-task. */
+  onSplitMessage?: (commentId: string, text: string) => void;
 };
 
 type PendingComposerInput =
@@ -2659,12 +2659,13 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     return map;
   }, [feedbackVotes]);
 
+  const commentIds = useMemo(() => new Set((comments ?? []).map((comment) => comment.id)), [comments]);
   // copy · split · 👍 · 👎 cluster for a bubble's footer line (PAP-413).
   // Human bubbles get only split; feedback renders only when the host wired a vote handler.
   const renderMessageActions = useCallback(
     (item: TaskChatMessageItem) => {
       if (item.optimistic || item.author === "system") return null;
-      const onSplit = onSplitMessage ? () => onSplitMessage(item.text) : undefined;
+      const onSplit = onSplitMessage && commentIds.has(item.id) ? () => onSplitMessage(item.id, item.text) : undefined;
       if (item.author !== "agent") {
         return onSplit ? <TaskChatBubbleActions copyText={item.text} onSplit={onSplit} hideCopy /> : null;
       }
@@ -2689,6 +2690,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     [
       onVote,
       onSplitMessage,
+      commentIds,
       feedbackVoteByTargetId,
       feedbackDataSharingPreference,
       feedbackTermsUrl,
