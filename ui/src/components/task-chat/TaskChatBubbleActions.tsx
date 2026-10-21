@@ -5,7 +5,7 @@ import type {
 import { useCopyAction } from "@/lib/use-copy-action";
 import { IssueChatFeedbackButtons } from "@/components/AgentBubbleActionRow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Check, Copy, X, Info } from "lucide-react";
+import { Check, Copy, X, Info, Split } from "lucide-react";
 
 /** Feedback-vote wiring for an agent bubble, resolved per comment by the host. */
 export interface TaskChatBubbleFeedback {
@@ -30,9 +30,13 @@ export function TaskChatBubbleActions({
   copyText,
   feedback,
   fastResponse,
+  onSplit,
+  hideCopy = false,
 }: {
   copyText: string;
   fastResponse?: boolean;
+  onSplit?: () => void;
+  hideCopy?: boolean;
   feedback?: TaskChatBubbleFeedback | null;
 }) {
   const { copied, failed, copy } = useCopyAction(2000);
@@ -40,7 +44,7 @@ export function TaskChatBubbleActions({
 
   return (
     <div className="flex items-center gap-0.5" data-testid="task-chat-bubble-actions">
-      <button
+      {!hideCopy && <button
         type="button"
         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         title={label}
@@ -56,7 +60,8 @@ export function TaskChatBubbleActions({
         ) : (
           <Copy className="h-3.5 w-3.5" />
         )}
-      </button>
+      </button>}
+      {onSplit && <button type="button" onClick={onSplit} title="Split into new task" aria-label="Split into new task" data-testid="task-chat-split" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><Split className="h-3.5 w-3.5" /></button>}
       {fastResponse && <Popover><PopoverTrigger asChild><button type="button" aria-label="Message details" title="Message details" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"><Info className="h-3.5 w-3.5" /></button></PopoverTrigger><PopoverContent className="text-xs">Platform-generated acknowledgement. The agent’s substantive response follows separately.</PopoverContent></Popover>}
       {feedback ? (
         <IssueChatFeedbackButtons

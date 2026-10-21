@@ -422,6 +422,8 @@ export type TaskChatThreadProps = ComponentProps<typeof IssueChatThread> & {
   initialHistoryError?: boolean;
   onRetryInitialHistory?: () => void;
   onOpenSkill?: (skillId: string, name: string) => void;
+  /** Opens the new-sub-task form prefilled from a message. */
+  onSplitMessage?: (text: string) => void;
 };
 
 type PendingComposerInput =
@@ -566,6 +568,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     onResumeAssignee,
     resumeAssigneePending = false,
     onOpenSkill,
+    onSplitMessage,
   } = props;
   const retryFailedRunHandler =
     isTerminalIssueStatus(issueStatus) ||
@@ -2656,15 +2659,19 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     return map;
   }, [feedbackVotes]);
 
-  // copy · 👍 · 👎 cluster for an agent bubble's footer line (PAP-413). Human
-  // and system bubbles get nothing; copy is always available, and the feedback
-  // buttons render only when the host wired a vote handler.
+  // copy · split · 👍 · 👎 cluster for a bubble's footer line (PAP-413).
+  // Human bubbles get only split; feedback renders only when the host wired a vote handler.
   const renderMessageActions = useCallback(
     (item: TaskChatMessageItem) => {
-      if (item.author !== "agent" || item.optimistic) return null;
+      if (item.optimistic || item.author === "system") return null;
+      const onSplit = onSplitMessage ? () => onSplitMessage(item.text) : undefined;
+      if (item.author !== "agent") {
+        return onSplit ? <TaskChatBubbleActions copyText={item.text} onSplit={onSplit} hideCopy /> : null;
+      }
       return (
         <TaskChatBubbleActions
           copyText={item.text}
+          onSplit={onSplit}
           fastResponse={item.origin === "fast_response"}
           feedback={
             onVote
@@ -2681,6 +2688,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     },
     [
       onVote,
+      onSplitMessage,
       feedbackVoteByTargetId,
       feedbackDataSharingPreference,
       feedbackTermsUrl,

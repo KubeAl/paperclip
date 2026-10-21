@@ -1197,6 +1197,7 @@ type IssueDetailChatTabProps = {
   browsers?: import("@paperclipai/shared").TaskBrowser[];
   onOpenBrowser?: (browserId: string) => void;
   onOpenSkill?: (skillId: string, name: string) => void;
+  onSplitMessage?: (text: string) => void;
   issueId: string;
   companyId: string;
   projectId: string | null;
@@ -1352,6 +1353,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
   browsers,
   onOpenBrowser,
   onOpenSkill,
+  onSplitMessage,
   issueId,
   companyId,
   projectId,
@@ -2499,6 +2501,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
             key={conversationMode ? draftKey : issueId}
             {...(!classicTaskInterfaceEnabled ? { creationActivity: resolvedActivity } : {})}
             onOpenSkill={onOpenSkill}
+            onSplitMessage={onSplitMessage}
             browsers={browsers}
             onOpenBrowser={onOpenBrowser}
             hasOlderComments={hasOlderComments}
@@ -3897,6 +3900,16 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
   const openNewSubIssue = useCallback(() => {
     if (!issue) return;
     openNewIssue(buildSubIssueDefaultsForViewer(issue, currentUserId));
+  }, [currentUserId, issue, openNewIssue]);
+  const openSplitTask = useCallback((text: string) => {
+    if (!issue) return;
+    const firstLine = text.split("\n").map((line) => line.replace(/[#>*_`]/g, "").trim()).find(Boolean) ?? "";
+    openNewIssue({
+      ...buildSubIssueDefaultsForViewer(issue, currentUserId),
+      title: firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine,
+      description: text,
+      navigateOnCreate: true,
+    });
   }, [currentUserId, issue, openNewIssue]);
 
   const commentReassignOptions = useMemo(() => {
@@ -8072,6 +8085,7 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
                 <IssueDetailChatTab
                   queryIssueId={issueId ?? issue.id}
                   onOpenSkill={handleOpenSkill}
+                  onSplitMessage={openSplitTask}
                   browsers={browserQuery.data}
                   onOpenBrowser={(id) => { setOpenBrowserId(id); if (isMobile) setMobilePropsOpen(true); else openTaskSidePanel(); }}
                   threadHeader={<>{taskChatThreadHeader}<EmailTaskActivity key={issue.id} companyId={issue.companyId} issueId={issue.id} /></>}
