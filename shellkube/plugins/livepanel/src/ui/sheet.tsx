@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { DetailedCellError, type SimpleCellAddress } from "hyperformula";
 import { a1, buildSheets, colName, plain, type Sheets } from "../sheet";
+import { useFillHeight } from "./owl";
 
 type Submit = (m: { action: string; values: unknown; wake: boolean }) => Promise<unknown>;
 type Change = { cell: string; from: unknown; to: unknown; addr: SimpleCellAddress };
@@ -23,6 +24,8 @@ export function SheetPanel({ sheets, submit }: { sheets: Sheets; submit: Submit 
   const [, rerender] = useState(0);
   const changes = useRef(new Map<string, Change>());
   const input = useRef<HTMLInputElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  const maxHeight = useFillHeight(grid, 640);
 
   const sheet = hf.getSheetId(names[tab])!;
   const { width, height } = hf.getSheetDimensions(sheet);
@@ -90,7 +93,7 @@ export function SheetPanel({ sheets, submit }: { sheets: Sheets; submit: Submit 
           onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} onBlur={commit}
           style={{ flex: 1, fontFamily: "monospace", fontSize: 12, padding: "3px 6px", border: line, borderRadius: 4, background: "transparent", color: "inherit" }} />
       </div>
-      <div style={{ overflow: "auto", maxHeight: 640, border: line, borderRadius: 4 }}>
+      <div ref={grid} style={{ overflow: "auto", maxHeight, border: line, borderRadius: 4 }}>
         <table style={{ borderCollapse: "collapse", fontVariantNumeric: "tabular-nums", minWidth: "100%" }}>
           <thead>
             <tr><th style={{ ...head, top: 0, left: 0, zIndex: 2 }} />{cols.map((c) => <th key={c} style={{ ...head, top: 0, zIndex: 1 }}>{colName(c)}</th>)}</tr>

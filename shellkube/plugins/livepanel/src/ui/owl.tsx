@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 type Submit = (m: { action: string; values: unknown; wake: boolean }) => Promise<unknown>;
 type State = { values: Record<string, unknown>; owl: unknown };
@@ -11,6 +11,25 @@ export const frameUrl = (dir: string) => pluginId.then((id) => `/_plugins/${id}/
 const line = "1px solid var(--border)";
 const button = { fontSize: 12, padding: "3px 10px", borderRadius: 6, border: line, background: "transparent", cursor: "pointer" } as const;
 
+// Height that lets `ref`'s panel section fill the visible side panel tab (the tab body scrolls, so it has no height to inherit).
+export function useFillHeight(ref: RefObject<HTMLElement | null>, fallback: number) {
+  const [height, setHeight] = useState(fallback);
+  useLayoutEffect(() => {
+    const el = ref.current, view = el?.closest<HTMLElement>("[data-side-panel-content-viewport]"), section = el?.closest("section");
+    if (!el || !view || !section) return;
+    const fit = () => {
+      const s = getComputedStyle(view);
+      const room = view.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+      setHeight(Math.max(320, room - (section.offsetHeight - el.offsetHeight)));
+    };
+    // The section is observed too: it is 0 px while the tab is hidden and gets its real size when shown.
+    const ro = new ResizeObserver(fit);
+    ro.observe(view); ro.observe(section);
+    return () => ro.disconnect();
+  }, [ref]);
+  return height;
+}
+
 // Same sheet panel, rendered by Odoo's o-spreadsheet (OWL) for comparison with the HyperFormula grid.
 // Opaque-origin frame: o-spreadsheet's Owl app and Bootstrap CSS stay out of the host page.
 export function OwlSheet({ data, submit }: { data: unknown; submit: Submit }) {
@@ -20,6 +39,7 @@ export function OwlSheet({ data, submit }: { data: unknown; submit: Submit }) {
   const waiting = useRef<((s: State) => void) | null>(null);
   const [msg, setMsg] = useState("");
   const [url, setUrl] = useState("");
+  const height = useFillHeight(ref, 560);
   useEffect(() => { frameUrl("owl").then(setUrl, (e) => setMsg(`Cannot load o-spreadsheet: ${e}`)); }, []);
 
   useEffect(() => {
@@ -51,7 +71,7 @@ export function OwlSheet({ data, submit }: { data: unknown; submit: Submit }) {
   return (
     <div style={{ display: "grid", gap: 6 }}>
       <iframe ref={ref} title="Spreadsheet (o-spreadsheet)" src={url || undefined} sandbox="allow-scripts allow-downloads" allow="clipboard-read; clipboard-write"
-        style={{ display: "block", width: "100%", height: 560, border: line, borderRadius: 4 }} />
+        style={{ display: "block", width: "100%", height, border: line, borderRadius: 4 }} />
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <button style={button} onClick={() => send(false)}>Save</button>
         <button style={{ ...button, background: "var(--primary)", color: "var(--primary-foreground)", borderColor: "var(--primary)" }} onClick={() => send(true)}>Send to agent</button>
