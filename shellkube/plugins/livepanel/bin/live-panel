@@ -3,7 +3,8 @@
 
   live-panel render [--panel P] [--title T] [--data JSON] [FILE|-]   # whole page; empty page removes the panel
   live-panel spec   [--panel P] [--title T] [FILE|-]                 # form as a short JSON spec instead of HTML (doc: live-panel-spec.md)
-  live-panel sheet  [--panel P] [--title T] [FILE|-]                 # live spreadsheet: .xlsx, .csv or JSON {"Sheet1": [[...], ...]} with "=FORMULA" cells
+  live-panel sheet  [--panel P] [--title T] [--engine owl] [FILE|-]  # live spreadsheet: .xlsx, .csv or JSON {"Sheet1": [[...], ...]} with "=FORMULA" cells
+                                                                     # --engine owl: Odoo's o-spreadsheet (keeps .xlsx formats and charts) instead of HyperFormula
   live-panel patch  [--panel P] --target CSS [--mode inner|outer|append|prepend|text|remove] [FILE|-|--html H]
   live-panel data   [--panel P] JSON                                  # shallow-merge into the panel data
   live-panel input  [--panel P] [--after N] [--wait SECONDS]          # what the user submitted (wait <= 25)
@@ -11,7 +12,7 @@
 Uses PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_AGENT_ID, PAPERCLIP_RUN_ID, PAPERCLIP_COMPANY_ID and
 PAPERCLIP_TASK_ID (or --issue). Prints the tool result; exit 1 on error.
 """
-import argparse, csv, json, os, re, sys, urllib.request, urllib.error, zipfile
+import argparse, csv, json, os, posixpath, re, sys, urllib.request, urllib.error, zipfile
 import xml.etree.ElementTree as ET
 
 E = os.environ
@@ -66,6 +67,33 @@ def xlsx(path):
     return out
 
 
+def owl_xlsx(path):
+    """The .xlsx unzipped for o-spreadsheet ({path: xml}). Rewrites what o-spreadsheet 19.0 cannot read in openpyxl-made
+    files (Excel-made files already look like this): absolute rel targets, inline strings, alpha-00 colours, and tags
+    without Excel's namespace prefixes. shortcut: images (xl/media) are skipped; they need an o-spreadsheet file store."""
+    z = zipfile.ZipFile(path)
+    files = {n: z.read(n).decode("utf-8", "replace") for n in z.namelist() if n.endswith((".xml", ".rels"))}
+
+    def prefix(xml, p):
+        xml = xml.replace(' xmlns="', f' xmlns:{p}="', 1)
+        return re.sub(r"<(/?)([A-Za-z][\w.-]*)(?=[\s/>])", lambda m: f"<{m.group(1)}{p}:{m.group(2)}", xml)
+
+    for n, xml in files.items():
+        if n.endswith(".rels"):
+            base = posixpath.dirname(posixpath.dirname(n)) or "."
+            xml = re.sub(r'Target="/([^"]+)"', lambda m: f'Target="{posixpath.relpath(m.group(1), base)}"', xml)
+        elif n.startswith("xl/worksheets/"):
+            xml = re.sub(r'<c ([^>]*)t="inlineStr"([^>]*)><is><t[^>]*>(.*?)</t></is>', r'<c \1t="str"\2><v>\3</v>', xml)
+        elif n == "xl/styles.xml":
+            xml = re.sub(r'rgb="00([0-9A-Fa-f]{6})"', r'rgb="FF\1"', xml)
+        elif n.startswith("xl/drawings/") and ' xmlns="' in xml:
+            xml = prefix(xml, "xdr")
+        elif n.startswith("xl/charts/") and ' xmlns="' in xml:
+            xml = prefix(xml, "c")
+        files[n] = xml
+    return files
+
+
 def sheet(src):
     if src and src.lower().endswith(".xlsx"): return xlsx(src)
     if src and src.lower().endswith(".csv"):
@@ -85,6 +113,7 @@ def main():
     ap.add_argument("--target")
     ap.add_argument("--mode", default="inner")
     ap.add_argument("--html")
+    ap.add_argument("--engine", choices=["hyperformula", "owl"], default="hyperformula")
     ap.add_argument("--after", type=int, default=0)
     ap.add_argument("--wait", type=float, default=0)
     a = ap.parse_args()
@@ -101,6 +130,9 @@ def main():
     elif a.cmd == "sheet":
         tool, p["sheet"] = "live_render", sheet(a.arg)
         if a.title: p["title"] = a.title
+        if a.engine == "owl":
+            p["engine"] = "owl"
+            if a.arg and a.arg.lower().endswith(".xlsx"): p["xlsx"] = owl_xlsx(a.arg)
     elif a.cmd == "patch":
         tool, html = "live_patch", a.html if a.html is not None else ("" if a.mode == "remove" else read(a.arg))
         p["ops"] = [{"target": a.target, "mode": a.mode, "html": html}] if a.target else []

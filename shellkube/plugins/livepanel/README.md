@@ -21,6 +21,12 @@ Plugin key `shellkube.livepanel`. Needs the carried stream-bus patch (upstream P
   `{changes, sheets (formulas), values}`. Saved sheets come back after a reload until the next render. The CLI reads
   .xlsx with the stdlib: formulas and values only (no formats/styles/charts; dates are serial numbers; Excel shared
   formulas keep their stored value). No export back to .xlsx.
+- **Sheet, o-spreadsheet engine** (`--engine owl`, panel field `engine:"owl"`): the same sheet in Odoo's o-spreadsheet 19.0
+  (LGPL; Owl + Bootstrap) inside an opaque-origin frame (`dist/ui/owl/`, one hashed .js/.css, served immutable). With an
+  .xlsx the CLI also sends the unzipped XML (`xlsx`, max 4 MB), so formats, styles, merges and charts show. `owl_xlsx()` fixes
+  what 19.0 cannot read in openpyxl files (absolute rel targets, inline strings, alpha-00 colours, unprefixed drawing/chart
+  tags). Images are skipped; only Arial is supported. Same Save/Send and `live_input` shape, plus `owl` (the full
+  o-spreadsheet export, kept only on the newest input) to restore edits after reload.
 - **Storage**: plugin state, scope issue, key `panels`. Limits: 8 panels per task, 256 KB html, 300 patches per render.
 
 ## Page API (inside the frame)

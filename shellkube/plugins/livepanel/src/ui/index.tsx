@@ -7,6 +7,7 @@ import type { Spec } from "@json-render/core";
 import { catalog, NAMES } from "../catalog";
 import type { Sheets } from "../sheet";
 import { SheetPanel } from "./sheet";
+import { OwlSheet } from "./owl";
 
 // submit is handled per panel by JSONUIProvider handlers, so the registry only carries components.
 const { registry } = defineRegistry(catalog, {
@@ -30,7 +31,7 @@ function DateInput({ props, bindings }: { props: Record<string, any>; bindings?:
 
 type Op = { target?: string; mode?: string; html?: string };
 type PanelState = {
-  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; patches: Op[]; data: Record<string, unknown>;
+  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; engine?: "owl"; xlsx?: Record<string, string>; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; updatedAt: string; saved: Record<string, unknown>;
 };
 
@@ -184,7 +185,9 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
             <strong style={{ fontWeight: 600 }}>{p.title || (p.name === "main" ? "Live panel" : p.name)}</strong>
             <span>{new Date(p.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
-          {p.sheet
+          {p.sheet && p.engine === "owl"
+            ? <OwlSheet key={p.version} data={(p.saved.sheet as { owl?: unknown } | undefined)?.owl ?? p.xlsx ?? p.sheet} submit={submitFor(p.name)} />
+            : p.sheet
             ? <SheetPanel key={p.version} sheets={(p.saved.sheet as { sheets?: Sheets } | undefined)?.sheets ?? p.sheet} submit={submitFor(p.name)} />
             : p.spec
             ? <SpecPanel key={p.version} panel={p} submit={submitFor(p.name)} />

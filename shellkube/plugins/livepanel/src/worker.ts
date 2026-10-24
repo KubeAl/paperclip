@@ -8,7 +8,7 @@ import { buildSheets, cellErrors, type Sheets } from "./sheet";
 type Op = { target?: string; mode?: "inner" | "outer" | "append" | "prepend" | "text" | "remove"; html?: string };
 type Input = { seq: number; action: string; values: unknown; userId: string; at: string; wake: boolean };
 type Panel = {
-  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; patches: Op[]; data: Record<string, unknown>;
+  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; engine?: "owl"; xlsx?: Record<string, string>; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; seq: number; inputs: Input[]; agentId: string; updatedAt: string;
   renderSeq?: number; // input seq at the last render: later inputs are restored into that render's forms
 };
@@ -17,7 +17,7 @@ type Panels = Record<string, Panel>;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/i;
 const MODES = new Set(["inner", "outer", "append", "prepend", "text", "remove"]);
-const MAX_HTML = 256_000, MAX_JSON = 64_000, MAX_CELLS = 50_000, MAX_PATCHES = 300, MAX_PANELS = 8, MAX_INPUTS = 50, MAX_WAIT_S = 25;
+const MAX_HTML = 256_000, MAX_JSON = 64_000, MAX_CELLS = 50_000, MAX_XLSX = 4_000_000, MAX_PATCHES = 300, MAX_PANELS = 8, MAX_INPUTS = 50, MAX_WAIT_S = 25;
 
 function str(v: unknown): string { return typeof v === "string" ? v : ""; }
 function uuid(v: unknown, label: string): string {
@@ -93,6 +93,9 @@ function serial<T>(issueId: string, fn: () => Promise<T>): Promise<T> {
 // live_input callers waiting for the next submit, per issue+panel.
 const waiters = new Map<string, Set<() => void>>();
 
+// owl = the full o-spreadsheet export, kept only to restore the panel.
+const dropOwl = (i: Input): Input => (i.values as { owl?: unknown })?.owl ? { ...i, values: { ...(i.values as object), owl: undefined } } : i;
+
 // The changed cells as a table; the whole sheet is too big for a comment and stays in live_input.
 function sheetComment(name: string, seq: number, values: unknown): string {
   const changes = ((values as { changes?: unknown })?.changes ?? []) as Array<Record<string, unknown>>;
@@ -146,12 +149,17 @@ const plugin = definePlugin({
         sheet = p.sheet === undefined || p.sheet === "" ? undefined : parseSheet(p.sheet);
         if (sheet) { const hf = buildSheets(sheet); errors = cellErrors(hf); hf.destroy(); }
       } catch (e) { return { error: `sheet: ${e instanceof Error ? e.message : String(e)}` }; }
+      const engine = sheet && p.engine === "owl" ? "owl" as const : undefined;
+      // The unzipped .xlsx ({path: xml}) for o-spreadsheet, which imports styles, formats and charts itself.
+      const xlsx = engine && p.xlsx ? p.xlsx as Record<string, string> : undefined;
+      if (xlsx && (typeof xlsx !== "object" || Object.values(xlsx).some((v) => typeof v !== "string") || JSON.stringify(xlsx).length > MAX_XLSX))
+        return { error: `xlsx must be {path: xml text} under ${MAX_XLSX} bytes` };
       const data = obj(p.data, "data");
       const next = await update(issueId, run.companyId, name, (cur, all) => {
         if (!html.trim() && !spec && !sheet) return null;
         if (!cur && Object.keys(all).length >= MAX_PANELS) throw new Error(`at most ${MAX_PANELS} panels per task`);
         return {
-          name, title: str(p.title) || cur?.title || "", html: spec || sheet ? "" : html, spec, sheet, patches: [], data: data ?? cur?.data ?? {},
+          name, title: str(p.title) || cur?.title || "", html: spec || sheet ? "" : html, spec, sheet, engine, xlsx, patches: [], data: data ?? cur?.data ?? {},
           version: (cur?.version ?? 0) + 1, rev: 0, seq: cur?.seq ?? 0, renderSeq: cur?.seq ?? 0, inputs: cur?.inputs ?? [],
           agentId: run.agentId, updatedAt: "",
         };
@@ -202,6 +210,7 @@ const plugin = definePlugin({
         });
         inputs = await read();
       }
+      inputs = inputs.map(dropOwl);
       return { content: inputs.length ? JSON.stringify(inputs) : "No new input.", data: inputs };
     });
 
@@ -223,13 +232,15 @@ const plugin = definePlugin({
       const name = panelName(params.panel), action = str(params.action).trim().slice(0, 80) || "submit";
       const wake = params.wake !== false, values = params.values ?? {};
       // A sheet submit carries the whole sheet twice (formulas and values).
-      if (JSON.stringify(values).length > (action === "sheet" ? 2 * MAX_HTML : MAX_JSON)) throw new Error("Input is too large");
+      if (JSON.stringify(values).length > (action === "sheet" ? MAX_XLSX : MAX_JSON)) throw new Error("Input is too large");
       let input: Input | undefined, isSheet = false;
       await update(issueId, companyId, name, (cur) => {
         if (!cur) throw new Error("This panel no longer exists");
         isSheet = !!cur.sheet;
         input = { seq: cur.seq + 1, action, values, userId: actor.userId!, at: new Date().toISOString(), wake };
-        return { ...cur, seq: input.seq, inputs: [...cur.inputs, input].slice(-MAX_INPUTS) };
+        // Only the newest export is needed; drop older ones so the state stays small.
+        const kept = cur.inputs.map(dropOwl);
+        return { ...cur, seq: input.seq, inputs: [...kept, input].slice(-MAX_INPUTS) };
       });
       waiters.get(`${issueId}:${name}`)?.forEach((done) => done());
       if (wake) {

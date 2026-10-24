@@ -16,6 +16,8 @@
     "@json-render/core": "0.21.1",
     "@json-render/react": "0.21.1",
     "@json-render/shadcn": "0.21.1",
+    "@odoo/o-spreadsheet": "19.0.54",
+    "chart.js": "4.4.7",
     "hyperformula": "3.5.0",
     "zod": "4.6.7"
   }

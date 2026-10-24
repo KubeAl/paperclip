@@ -1108,6 +1108,8 @@ export async function createApp(
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "API route not found" });
   });
+  // Plugin UI bundles are large too (livepanel: ~2.5 MB of JS); compress them like the host UI.
+  app.use("/_plugins", staticUiCompression());
   app.use(
     pluginUiStaticRoutes(db, {
       localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
