@@ -14,6 +14,13 @@ Plugin key `shellkube.livepanel`. Needs the carried stream-bus patch (upstream P
   buttons, and http(s) link clicks (opened in a new tab by the host).
 - **Submit**: stored on the panel (last 50). If the form wakes (default), the plugin posts the values as a comment
   attributed to the user, which wakes the assignee like any user comment. `data-wake="false"` only stores.
+- **Sheet** (`live_render` with `sheet`, CLI `live-panel sheet FILE.xlsx|.csv|.json`): a spreadsheet computed in the browser
+  by HyperFormula 3.5 (GPL-3 key `gpl-v3`; fine for this internal, undistributed fork plugin). The worker builds it once to
+  return cells that show errors (#NAME?, #REF!, ...). Users edit through the formula bar (Enter/Tab/arrows); dependents
+  recalc at once. Save stores the sheet (no wake); Send also posts a changed-cells table as the user. `live_input` returns
+  `{changes, sheets (formulas), values}`. Saved sheets come back after a reload until the next render. The CLI reads
+  .xlsx with the stdlib: formulas and values only (no formats/styles/charts; dates are serial numbers; Excel shared
+  formulas keep their stored value). No export back to .xlsx.
 - **Storage**: plugin state, scope issue, key `panels`. Limits: 8 panels per task, 256 KB html, 300 patches per render.
 
 ## Page API (inside the frame)

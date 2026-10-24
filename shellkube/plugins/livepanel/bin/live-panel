@@ -3,6 +3,7 @@
 
   live-panel render [--panel P] [--title T] [--data JSON] [FILE|-]   # whole page; empty page removes the panel
   live-panel spec   [--panel P] [--title T] [FILE|-]                 # form as a short JSON spec instead of HTML (doc: live-panel-spec.md)
+  live-panel sheet  [--panel P] [--title T] [FILE|-]                 # live spreadsheet: .xlsx, .csv or JSON {"Sheet1": [[...], ...]} with "=FORMULA" cells
   live-panel patch  [--panel P] --target CSS [--mode inner|outer|append|prepend|text|remove] [FILE|-|--html H]
   live-panel data   [--panel P] JSON                                  # shallow-merge into the panel data
   live-panel input  [--panel P] [--after N] [--wait SECONDS]          # what the user submitted (wait <= 25)
@@ -10,7 +11,8 @@
 Uses PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_AGENT_ID, PAPERCLIP_RUN_ID, PAPERCLIP_COMPANY_ID and
 PAPERCLIP_TASK_ID (or --issue). Prints the tool result; exit 1 on error.
 """
-import argparse, json, os, sys, urllib.request, urllib.error
+import argparse, csv, json, os, re, sys, urllib.request, urllib.error, zipfile
+import xml.etree.ElementTree as ET
 
 E = os.environ
 
@@ -30,9 +32,51 @@ def read(src):
     return sys.stdin.read() if src in (None, "-") else open(src).read()
 
 
+M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+
+
+def xlsx(path):
+    """Cells of every sheet: formulas as "=...", else the stored value. Formats, styles and charts are dropped."""
+    z = zipfile.ZipFile(path)
+    text = lambda el: "".join(t.text or "" for t in el.iter(M + "t"))
+    shared = [text(si) for si in ET.fromstring(z.read("xl/sharedStrings.xml")).iter(M + "si")] if "xl/sharedStrings.xml" in z.namelist() else []
+    rels = {r.get("Id"): r.get("Target") for r in ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))}
+    out = {}
+    for s in ET.fromstring(z.read("xl/workbook.xml")).iter(M + "sheet"):
+        target = rels[s.get(R + "id")]
+        rows = []
+        for c in ET.fromstring(z.read(target.lstrip("/") if target.startswith("/") else "xl/" + target)).iter(M + "c"):
+            letters, num = re.match(r"([A-Z]+)(\d+)", c.get("r")).groups()
+            col, row = 0, int(num) - 1
+            for ch in letters: col = col * 26 + ord(ch) - 64
+            f, v, t = c.find(M + "f"), c.find(M + "v"), c.get("t")
+            # shortcut: cells sharing another cell's formula (Excel "shared" formulas) keep only their stored value; translate refs if users need them editable.
+            if f is not None and f.text: val = "=" + f.text
+            elif t == "inlineStr": val = text(c)
+            elif v is None: continue
+            elif t == "s": val = shared[int(v.text)]
+            elif t == "b": val = v.text == "1"
+            elif t in ("str", "e"): val = v.text
+            else: val = float(v.text); val = int(val) if val.is_integer() else val
+            rows += [[] for _ in range(row + 1 - len(rows))]
+            rows[row] += [None] * (col - len(rows[row]))
+            rows[row][col - 1] = val
+        out[s.get("name")] = rows
+    return out
+
+
+def sheet(src):
+    if src and src.lower().endswith(".xlsx"): return xlsx(src)
+    if src and src.lower().endswith(".csv"):
+        with open(src, newline="") as f: return {os.path.splitext(os.path.basename(src))[0][:31] or "Sheet1": list(csv.reader(f))}
+    data = json.loads(read(src))
+    return {"Sheet1": data} if isinstance(data, list) else data
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["render", "spec", "patch", "data", "input"])
+    ap.add_argument("cmd", choices=["render", "spec", "sheet", "patch", "data", "input"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--issue", default=E.get("PAPERCLIP_TASK_ID"))
     ap.add_argument("--panel", default="main")
@@ -53,6 +97,9 @@ def main():
         if a.data: p["data"] = json.loads(a.data)
     elif a.cmd == "spec":
         tool, p["spec"] = "live_render", read(a.arg)
+        if a.title: p["title"] = a.title
+    elif a.cmd == "sheet":
+        tool, p["sheet"] = "live_render", sheet(a.arg)
         if a.title: p["title"] = a.title
     elif a.cmd == "patch":
         tool, html = "live_patch", a.html if a.html is not None else ("" if a.mode == "remove" else read(a.arg))

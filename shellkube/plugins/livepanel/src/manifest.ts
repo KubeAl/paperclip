@@ -19,10 +19,11 @@ const manifest: PaperclipPluginManifestV1 = {
   tools: [
     {
       name: "live_render", displayName: "Live panel: render",
-      description: "Show or replace an HTML panel on the task. The page updates in place (typed input is kept). Empty html removes the panel. Forms submit to the agent; see live_input. Or pass spec (json-render JSONL patches) instead of html to show native Paperclip form components.",
-      parametersSchema: { type: "object", required: ["issueId", "html"], properties: {
+      description: "Show or replace an HTML panel on the task. The page updates in place (typed input is kept). Empty html removes the panel. Forms submit to the agent; see live_input. Or pass spec (json-render JSONL patches) instead of html to show native Paperclip form components, or sheet to show a live spreadsheet (HyperFormula) the user can edit; returns cells that show errors.",
+      parametersSchema: { type: "object", required: ["issueId"], properties: {
         issueId, panel, title: { type: "string" }, html: { type: "string" },
         spec: { type: "string", description: "json-render spec as JSONL patches (see the live panel spec doc). Replaces html." },
+        sheet: { type: "object", description: "Spreadsheet {\"Sheet name\": [[row cells], ...]}; cells are text, numbers, true/false, null or \"=FORMULA\" (Excel syntax, 'Other sheet'!A1 refs). Replaces html. The user's Save/Send comes back in live_input as action \"sheet\" with changes, sheets (formulas) and values." },
         data: { type: "object", description: "Initial data for [data-bind] elements and paperclip.onData." } } },
     },
     {
