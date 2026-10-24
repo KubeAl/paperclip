@@ -27,6 +27,14 @@ Plugin key `shellkube.livepanel`. Needs the carried stream-bus patch (upstream P
   what 19.0 cannot read in openpyxl files (absolute rel targets, inline strings, alpha-00 colours, unprefixed drawing/chart
   tags). Images are skipped; only Arial is supported. Same Save/Send and `live_input` shape, plus `owl` (the full
   o-spreadsheet export, kept only on the newest input) to restore edits after reload.
+- **OpenUI** (`live_render` with `openui`, CLI `live-panel ui FILE.oui`, agent doc `live-panel-ui.md`): an OpenUI Lang program
+  (@openuidev/react-lang 1.0.1 + react-ui 0.18.1, MIT) for charts and rich choice cards. The worker parses it with lang-core
+  against the library's JSON schema (build.mjs writes `dist/openui-schema.json`) and rejects errors, undefined or unused names
+  and Query/Mutation. Rendered in an opaque-origin frame (`dist/ui/openui/`, React bundled in, one hashed .js/.css, CSP blocks
+  network). Library = `openuiLibrary` minus CodeBlock; the syntax highlighter and katex are stubbed at build (markdown code is
+  plain, math shows as source). `@ToAssistant` buttons submit `{action, values: form fields + context}` (wakes); `@OpenUrl` opens
+  http(s) in a new tab. Theme is taken from the host on load. Typed values are not restored after a reload.
+  Deps were installed with `OPENUI_TELEMETRY_DISABLED=1` (lang-core's postinstall pings PostHog otherwise).
 - **Storage**: plugin state, scope issue, key `panels`. Limits: 8 panels per task, 256 KB html, 300 patches per render.
 
 ## Page API (inside the frame)

@@ -10,6 +10,11 @@ const require = createRequire(path.join(root, "package.json"));
 const esbuild = require("esbuild");
 const sdk = path.join(root, "packages/plugins/sdk");
 const alias = { "@paperclipai/plugin-sdk": path.join(sdk, "dist/index.js") };
+// The worker checks OpenUI panels against the library's JSON schema, written here so the worker runs no React code.
+await esbuild.build({ entryPoints: [path.join(here, "src/openui/lib.ts")], outfile: path.join(here, "dist/openui-lib.mjs"),
+  bundle: true, format: "esm", platform: "node", packages: "external", logLevel: "warning" });
+const { lib } = await import(path.join(here, "dist/openui-lib.mjs"));
+fs.writeFileSync(path.join(here, "dist/openui-schema.json"), JSON.stringify(lib.toJSONSchema()));
 for (const name of ["manifest", "worker"]) {
   await esbuild.build({ entryPoints: [path.join(here, `src/${name}.ts`)], outfile: path.join(here, `dist/${name}.js`),
     bundle: true, format: "esm", platform: "node", target: "node22", alias, nodePaths: [path.join(root, "node_modules"), path.join(sdk, "node_modules")],
@@ -40,10 +45,25 @@ const js = [
   read("node_modules/@odoo/o-spreadsheet/dist/o_spreadsheet.iife.min.js"),
   read("src/owl/frame.js"),
 ].join("\n;\n");
-const hashed = (ext, text) => {
+const hashed = (dir, ext, text) => {
   const name = `app.${crypto.createHash("sha256").update(text).digest("hex").slice(0, 12)}.${ext}`;
-  fs.writeFileSync(path.join(owlOut, name), text);
+  fs.writeFileSync(path.join(dir, name), text);
   return name;
 };
-fs.writeFileSync(path.join(owlOut, "index.html"), read("src/owl/index.html").replace("app.css", hashed("css", css)).replace("app.js", hashed("js", js)));
+fs.writeFileSync(path.join(owlOut, "index.html"), read("src/owl/index.html").replace("app.css", hashed(owlOut, "css", css)).replace("app.js", hashed(owlOut, "js", js)));
+// OpenUI (React + @openuidev/react-ui) runs in its own frame page too, with React bundled in.
+const ouiOut = path.join(here, "dist/ui/openui");
+fs.rmSync(ouiOut, { recursive: true, force: true });
+fs.mkdirSync(ouiOut, { recursive: true });
+// No CodeBlock in the library, so markdown code shows as plain text, and math (katex) as its source: saves ~1.2 MB.
+const stub = { name: "stub", setup(b) {
+  b.onResolve({ filter: /^(react-syntax-highlighter|katex)(\/|$)/ }, (a) => ({ path: a.path, namespace: "stub" }));
+  b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ loader: "jsx", resolveDir: here,
+    contents: "export const Prism = (p) => <pre className={p.className}>{p.children}</pre>, oneLight = {}, vscDarkPlus = {}; export default {};" }));
+} };
+const oui = await esbuild.build({ entryPoints: [path.join(here, "src/openui/frame.tsx")], outdir: ouiOut, write: false, plugins: [stub],
+  bundle: true, minify: true, format: "iife", platform: "browser", target: "es2022", jsx: "automatic",
+  define: { "process.env.NODE_ENV": '"production"' }, logLevel: "warning" });
+const out = (ext) => oui.outputFiles.find((f) => f.path.endsWith(ext)).text;
+fs.writeFileSync(path.join(ouiOut, "index.html"), read("src/openui/index.html").replace("app.css", hashed(ouiOut, "css", out(".css"))).replace("app.js", hashed(ouiOut, "js", out(".js"))));
 console.log("livepanel built");

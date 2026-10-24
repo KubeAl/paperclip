@@ -5,8 +5,9 @@ type State = { values: Record<string, unknown>; owl: unknown };
 
 // Served by the host from this plugin's dist/ui (build.mjs copies o-spreadsheet there). The static route needs the
 // plugin's uuid: by key it fails (server bug, the uuid lookup error is not caught).
-const src = fetch("/api/plugins", { credentials: "include" }).then((r) => r.json())
-  .then((list: Array<{ id: string; pluginKey: string }>) => `/_plugins/${list.find((p) => p.pluginKey === "shellkube.livepanel")!.id}/ui/owl/index.html`);
+const pluginId = fetch("/api/plugins", { credentials: "include" }).then((r) => r.json())
+  .then((list: Array<{ id: string; pluginKey: string }>) => list.find((p) => p.pluginKey === "shellkube.livepanel")!.id);
+export const frameUrl = (dir: string) => pluginId.then((id) => `/_plugins/${id}/ui/${dir}/index.html`);
 const line = "1px solid var(--border)";
 const button = { fontSize: 12, padding: "3px 10px", borderRadius: 6, border: line, background: "transparent", cursor: "pointer" } as const;
 
@@ -19,7 +20,7 @@ export function OwlSheet({ data, submit }: { data: unknown; submit: Submit }) {
   const waiting = useRef<((s: State) => void) | null>(null);
   const [msg, setMsg] = useState("");
   const [url, setUrl] = useState("");
-  useEffect(() => { src.then(setUrl, (e) => setMsg(`Cannot load o-spreadsheet: ${e}`)); }, []);
+  useEffect(() => { frameUrl("owl").then(setUrl, (e) => setMsg(`Cannot load o-spreadsheet: ${e}`)); }, []);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {

@@ -3,6 +3,7 @@
 
   live-panel render [--panel P] [--title T] [--data JSON] [FILE|-]   # whole page; empty page removes the panel
   live-panel spec   [--panel P] [--title T] [FILE|-]                 # form as a short JSON spec instead of HTML (doc: live-panel-spec.md)
+  live-panel ui     [--panel P] [--title T] [FILE.oui|-]               # OpenUI Lang: forms, choices, cards, charts (doc: live-panel-ui.md)
   live-panel sheet  [--panel P] [--title T] [--engine owl] [FILE|-]  # live spreadsheet: .xlsx, .csv or JSON {"Sheet1": [[...], ...]} with "=FORMULA" cells
                                                                      # --engine owl: Odoo's o-spreadsheet (keeps .xlsx formats and charts) instead of HyperFormula
   live-panel patch  [--panel P] --target CSS [--mode inner|outer|append|prepend|text|remove] [FILE|-|--html H]
@@ -104,7 +105,7 @@ def sheet(src):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["render", "spec", "sheet", "patch", "data", "input"])
+    ap.add_argument("cmd", choices=["render", "spec", "ui", "sheet", "patch", "data", "input"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--issue", default=E.get("PAPERCLIP_TASK_ID"))
     ap.add_argument("--panel", default="main")
@@ -126,6 +127,9 @@ def main():
         if a.data: p["data"] = json.loads(a.data)
     elif a.cmd == "spec":
         tool, p["spec"] = "live_render", read(a.arg)
+        if a.title: p["title"] = a.title
+    elif a.cmd == "ui":
+        tool, p["openui"] = "live_render", read(a.arg)
         if a.title: p["title"] = a.title
     elif a.cmd == "sheet":
         tool, p["sheet"] = "live_render", sheet(a.arg)

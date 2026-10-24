@@ -4,11 +4,13 @@ import type { ZodType } from "zod";
 import { catalog } from "./catalog";
 import { expandShort, isShort } from "./short";
 import { buildSheets, cellErrors, type Sheets } from "./sheet";
+import { createParser, type LibraryJSONSchema } from "@openuidev/lang-core";
+import schema from "../dist/openui-schema.json"; // written by build.mjs from src/openui/lib.ts
 
 type Op = { target?: string; mode?: "inner" | "outer" | "append" | "prepend" | "text" | "remove"; html?: string };
 type Input = { seq: number; action: string; values: unknown; userId: string; at: string; wake: boolean };
 type Panel = {
-  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; engine?: "owl"; xlsx?: Record<string, string>; patches: Op[]; data: Record<string, unknown>;
+  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; openui?: string; engine?: "owl"; xlsx?: Record<string, string>; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; seq: number; inputs: Input[]; agentId: string; updatedAt: string;
   renderSeq?: number; // input seq at the last render: later inputs are restored into that render's forms
 };
@@ -62,6 +64,23 @@ function parseSpec(v: unknown): Spec {
   }
   if (errors.length) throw new Error(`spec is invalid:\n${errors.join("\n")}`);
   return spec;
+}
+// OpenUI Lang (live-panel-ui.md), checked like the frame will parse it: anything that would not show is an error.
+const uiParser = createParser(schema as unknown as LibraryJSONSchema);
+function parseUi(v: unknown): string {
+  const src = str(v);
+  if (src.length > MAX_HTML) throw new Error(`openui is larger than ${MAX_HTML} bytes`);
+  const r = uiParser.parse(src), m = r.meta;
+  const errors = [
+    ...(r.root ? [] : ["no root: start with root = Stack([...])"]),
+    ...m.errors.filter((e) => e.severity !== "warning").map((e) => `${e.statementId ?? e.component}: ${e.message}`),
+    ...(m.unresolved.length ? [`used but never defined: ${m.unresolved.join(", ")}`] : []),
+    ...(m.orphaned.length ? [`defined but not reachable from root (would not show): ${m.orphaned.join(", ")}`] : []),
+    ...(r.queryStatements.length || r.mutationStatements.length ? ["Query() and Mutation() are not available in panels; put the data in the program"] : []),
+    ...(m.incomplete ? ["the program looks cut off (unclosed bracket or string)"] : []),
+  ];
+  if (errors.length) throw new Error(`openui is invalid:\n${errors.join("\n")}`);
+  return src;
 }
 // A sheet: {"Sheet name": [[row], ...]} or one [[row], ...]; cells are text, numbers, true/false, null or "=FORMULA".
 function parseSheet(v: unknown): Sheets {
@@ -144,6 +163,9 @@ const plugin = definePlugin({
       let spec: Spec | undefined;
       try { spec = p.spec === undefined || p.spec === "" ? undefined : parseSpec(p.spec); }
       catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
+      let openui: string | undefined;
+      try { openui = p.openui === undefined || p.openui === "" ? undefined : parseUi(p.openui); }
+      catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
       let sheet: Sheets | undefined, errors: string[] = [];
       try {
         sheet = p.sheet === undefined || p.sheet === "" ? undefined : parseSheet(p.sheet);
@@ -156,10 +178,10 @@ const plugin = definePlugin({
         return { error: `xlsx must be {path: xml text} under ${MAX_XLSX} bytes` };
       const data = obj(p.data, "data");
       const next = await update(issueId, run.companyId, name, (cur, all) => {
-        if (!html.trim() && !spec && !sheet) return null;
+        if (!html.trim() && !spec && !sheet && !openui) return null;
         if (!cur && Object.keys(all).length >= MAX_PANELS) throw new Error(`at most ${MAX_PANELS} panels per task`);
         return {
-          name, title: str(p.title) || cur?.title || "", html: spec || sheet ? "" : html, spec, sheet, engine, xlsx, patches: [], data: data ?? cur?.data ?? {},
+          name, title: str(p.title) || cur?.title || "", html: spec || sheet || openui ? "" : html, spec, sheet, openui, engine, xlsx, patches: [], data: data ?? cur?.data ?? {},
           version: (cur?.version ?? 0) + 1, rev: 0, seq: cur?.seq ?? 0, renderSeq: cur?.seq ?? 0, inputs: cur?.inputs ?? [],
           agentId: run.agentId, updatedAt: "",
         };
@@ -184,7 +206,8 @@ const plugin = definePlugin({
       if (JSON.stringify(ops).length > MAX_HTML) return { error: `ops are larger than ${MAX_HTML} bytes` };
       const next = await update(issueId, run.companyId, name, (cur) => {
         if (!cur) throw new Error(`no panel "${name}"; call live_render first`);
-        if (cur.spec || cur.sheet) throw new Error(`panel "${name}" is a ${cur.spec ? "spec" : "sheet"} panel; call live_render with the new ${cur.spec ? "spec" : "sheet"}`);
+        const kind = cur.spec ? "spec" : cur.sheet ? "sheet" : cur.openui ? "openui" : "";
+        if (kind) throw new Error(`panel "${name}" is not an HTML panel; call live_render with the new ${kind}`);
         if (cur.patches.length + ops.length > MAX_PATCHES) throw new Error(`more than ${MAX_PATCHES} patches since the last render; call live_render with the whole page`);
         return { ...cur, patches: [...cur.patches, ...ops], data: data ? { ...cur.data, ...data } : cur.data };
       });

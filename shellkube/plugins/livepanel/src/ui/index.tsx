@@ -8,6 +8,7 @@ import { catalog, NAMES } from "../catalog";
 import type { Sheets } from "../sheet";
 import { SheetPanel } from "./sheet";
 import { OwlSheet } from "./owl";
+import { OpenUIPanel } from "./openui";
 
 // submit is handled per panel by JSONUIProvider handlers, so the registry only carries components.
 const { registry } = defineRegistry(catalog, {
@@ -31,7 +32,7 @@ function DateInput({ props, bindings }: { props: Record<string, any>; bindings?:
 
 type Op = { target?: string; mode?: string; html?: string };
 type PanelState = {
-  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; engine?: "owl"; xlsx?: Record<string, string>; patches: Op[]; data: Record<string, unknown>;
+  name: string; title: string; html: string; spec?: Spec; sheet?: Sheets; openui?: string; engine?: "owl"; xlsx?: Record<string, string>; patches: Op[]; data: Record<string, unknown>;
   version: number; rev: number; updatedAt: string; saved: Record<string, unknown>;
 };
 
@@ -189,6 +190,8 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
             ? <OwlSheet key={p.version} data={(p.saved.sheet as { owl?: unknown } | undefined)?.owl ?? p.xlsx ?? p.sheet} submit={submitFor(p.name)} />
             : p.sheet
             ? <SheetPanel key={p.version} sheets={(p.saved.sheet as { sheets?: Sheets } | undefined)?.sheets ?? p.sheet} submit={submitFor(p.name)} />
+            : p.openui
+            ? <OpenUIPanel key={p.version} ui={p.openui} submit={submitFor(p.name)} />
             : p.spec
             ? <SpecPanel key={p.version} panel={p} submit={submitFor(p.name)} />
             : <Frame panel={p} submit={submitFor(p.name)} />}
