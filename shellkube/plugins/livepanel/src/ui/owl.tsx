@@ -32,10 +32,10 @@ export function useFillHeight(ref: RefObject<HTMLElement | null>, fallback: numb
 
 // Same sheet panel, rendered by Odoo's o-spreadsheet (OWL) for comparison with the HyperFormula grid.
 // Opaque-origin frame: o-spreadsheet's Owl app and Bootstrap CSS stay out of the host page.
-export function OwlSheet({ data, submit }: { data: unknown; submit: Submit }) {
+export function OwlSheet({ data, name, submit }: { data: unknown; name: string; submit: Submit }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const latest = useRef(data);
-  latest.current = data;
+  const latest = useRef({ data, name });
+  latest.current = { data, name };
   const waiting = useRef<((s: State) => void) | null>(null);
   const [msg, setMsg] = useState("");
   const [url, setUrl] = useState("");
@@ -47,7 +47,7 @@ export function OwlSheet({ data, submit }: { data: unknown; submit: Submit }) {
       const w = ref.current?.contentWindow;
       if (!w || e.source !== w) return;
       const m = e.data ?? {};
-      if (m.t === "ready") w.postMessage({ t: "load", data: latest.current }, "*");
+      if (m.t === "ready") w.postMessage({ t: "load", ...latest.current }, "*");
       else if (m.t === "state") waiting.current?.(m);
       else if (m.t === "error") setMsg(String(m.error));
     };

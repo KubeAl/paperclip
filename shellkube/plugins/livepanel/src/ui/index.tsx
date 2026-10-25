@@ -159,6 +159,14 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
   const [attempt, setAttempt] = useState(0);
   const [live, setLive] = useState(false);
   const onLost = useCallback(() => { setTimeout(() => setAttempt((a) => a + 1), 3000); }, []);
+  // Pinned panels stay first, in pin order, so saves and agent updates do not move them (moving a frame also reloads it).
+  const pinKey = `livepanel-pins:${issueId}`;
+  const [pins, setPins] = useState<string[]>(() => JSON.parse(localStorage.getItem(pinKey) ?? "[]"));
+  const togglePin = (name: string) => {
+    const next = pins.includes(name) ? pins.filter((n) => n !== name) : [...pins, name];
+    localStorage.setItem(pinKey, JSON.stringify(next));
+    setPins(next);
+  };
 
   const submitFor = useCallback((panel: string) =>
     (m: { action: string; values: unknown; wake: boolean }) => action({ companyId, issueId, panel, ...m }), [action, companyId, issueId]);
@@ -178,16 +186,24 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {watch}
-      {[...data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((p) => (
+      {[
+        ...pins.flatMap((n) => data.filter((p) => p.name === n)),
+        ...data.filter((p) => !pins.includes(p.name)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      ].map((p) => (
         <section key={p.name}>
           <div style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, alignSelf: "center",
               background: live ? "#22c55e" : "#94a3b8" }} title={live ? "live" : "reconnecting"} />
             <strong style={{ fontWeight: 600 }}>{p.title || (p.name === "main" ? "Live panel" : p.name)}</strong>
             <span>{new Date(p.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <button onClick={() => togglePin(p.name)} title={pins.includes(p.name) ? "Unpin" : "Pin to top"} aria-pressed={pins.includes(p.name)}
+              style={{ marginLeft: "auto", fontSize: 12, padding: "1px 8px", borderRadius: 6, border: "1px solid var(--border)", cursor: "pointer",
+                background: pins.includes(p.name) ? "var(--accent)" : "transparent", fontWeight: pins.includes(p.name) ? 600 : 400 }}>
+              {pins.includes(p.name) ? "Pinned" : "Pin"}
+            </button>
           </div>
           {p.sheet && p.engine === "owl"
-            ? <OwlSheet key={p.version} data={(p.saved.sheet as { owl?: unknown } | undefined)?.owl ?? p.xlsx ?? p.sheet} submit={submitFor(p.name)} />
+            ? <OwlSheet key={p.version} name={p.title || p.name} data={(p.saved.sheet as { owl?: unknown } | undefined)?.owl ?? p.xlsx ?? p.sheet} submit={submitFor(p.name)} />
             : p.sheet
             ? <SheetPanel key={p.version} sheets={(p.saved.sheet as { sheets?: Sheets } | undefined)?.sheets ?? p.sheet} submit={submitFor(p.name)} />
             : p.openui
