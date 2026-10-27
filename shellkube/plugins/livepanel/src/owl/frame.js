@@ -133,6 +133,11 @@ window.addEventListener("message", (e) => {
     if (m.t === "load") { fileName = String(m.name || "sheet").replace(/[\\/:*?"<>|]+/g, " ").trim() || "sheet"; load(m.data).catch((err) => post({ t: "error", error: String(err?.message ?? err) })); }
     else if (m.t === "collect") post({ t: "state", values: { changes: changes(), sheets: contents(), values: values() }, owl: model.exportData() });
     else if (m.t === "saved") initial = contents();
+    else if (m.t === "xlsx") {
+      const r = new FileReader();
+      r.onload = () => post({ t: "xlsx", b64: String(r.result).split(",")[1] });
+      r.readAsDataURL(xlsxBlob(model.exportXLSX().files));
+    }
   } catch (err) { post({ t: "error", error: String(err?.message ?? err) }); }
 });
 post({ t: "ready" });

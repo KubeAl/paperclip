@@ -27,6 +27,11 @@ Plugin key `shellkube.livepanel`. Needs the carried stream-bus patch (upstream P
   what 19.0 cannot read in openpyxl files (absolute rel targets, inline strings, alpha-00 colours, unprefixed drawing/chart
   tags). Images are skipped; only Arial is supported. Same Save/Send and `live_input` shape, plus `owl` (the full
   o-spreadsheet export, kept only on the newest input) to restore edits after reload.
+  **Save to Odoo task** (shown when the task is linked in the odoodocs "Odoo files" tab): the frame builds the .xlsx and the
+  UI calls odoodocs' `write`/`create` actions as the signed-in person (`/api/plugins/shellkube.odoodocs/actions/...`, no
+  second Odoo client). With `--odoo-file ID --odoo-base VERSION_ID` (panel `data.odoo`) it saves a new version of that file,
+  else a new `<title>.xlsx` on the task; the new base goes into the panel's saved input, so later saves build on it.
+  A newer Odoo version gives "Not saved: version N was saved in Odoo after this sheet was loaded".
 - **OpenUI** (`live_render` with `openui`, CLI `live-panel ui FILE.oui`, agent doc `live-panel-ui.md`): an OpenUI Lang program
   (@openuidev/react-lang 1.0.1 + react-ui 0.18.1, MIT) for charts and rich choice cards. The worker parses it with lang-core
   against the library's JSON schema (build.mjs writes `dist/openui-schema.json`) and rejects errors, undefined or unused names

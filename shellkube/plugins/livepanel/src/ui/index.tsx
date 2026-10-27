@@ -7,7 +7,7 @@ import type { Spec } from "@json-render/core";
 import { catalog, NAMES } from "../catalog";
 import type { Sheets } from "../sheet";
 import { SheetPanel } from "./sheet";
-import { OwlSheet } from "./owl";
+import { OwlSheet, type OdooSource } from "./owl";
 import { OpenUIPanel } from "./openui";
 
 // submit is handled per panel by JSONUIProvider handlers, so the registry only carries components.
@@ -203,7 +203,8 @@ function Panels({ companyId, issueId }: { companyId: string; issueId: string }) 
             </button>
           </div>
           {p.sheet && p.engine === "owl"
-            ? <OwlSheet key={p.version} name={p.title || p.name} data={(p.saved.sheet as { owl?: unknown } | undefined)?.owl ?? p.xlsx ?? p.sheet} submit={submitFor(p.name)} />
+            ? <OwlSheet key={p.version} name={p.title || p.name} data={(p.saved.sheet as { owl?: unknown } | undefined)?.owl ?? p.xlsx ?? p.sheet} submit={submitFor(p.name)}
+                odoo={{ companyId, issueId, source: (p.saved.sheet as { odoo?: OdooSource } | undefined)?.odoo ?? p.data.odoo as OdooSource | undefined }} />
             : p.sheet
             ? <SheetPanel key={p.version} sheets={(p.saved.sheet as { sheets?: Sheets } | undefined)?.sheets ?? p.sheet} submit={submitFor(p.name)} />
             : p.openui

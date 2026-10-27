@@ -6,6 +6,8 @@
   live-panel ui     [--panel P] [--title T] [FILE.oui|-]               # OpenUI Lang: forms, choices, cards, charts (doc: live-panel-ui.md)
   live-panel sheet  [--panel P] [--title T] [--engine owl] [FILE|-]  # live spreadsheet: .xlsx, .csv or JSON {"Sheet1": [[...], ...]} with "=FORMULA" cells
                                                                      # --engine owl: Odoo's o-spreadsheet (keeps .xlsx formats and charts) instead of HyperFormula
+                                                                     # --odoo-file ID --odoo-base VERSION_ID: the .xlsx came from that Odoo file
+                                                                     #   (odoo-docs read); "Save to Odoo task" then saves a new version of it
   live-panel patch  [--panel P] --target CSS [--mode inner|outer|append|prepend|text|remove] [FILE|-|--html H]
   live-panel data   [--panel P] JSON                                  # shallow-merge into the panel data
   live-panel input  [--panel P] [--after N] [--wait SECONDS]          # what the user submitted (wait <= 25)
@@ -115,6 +117,8 @@ def main():
     ap.add_argument("--mode", default="inner")
     ap.add_argument("--html")
     ap.add_argument("--engine", choices=["hyperformula", "owl"], default="hyperformula")
+    ap.add_argument("--odoo-file", type=int)
+    ap.add_argument("--odoo-base", type=int)
     ap.add_argument("--after", type=int, default=0)
     ap.add_argument("--wait", type=float, default=0)
     a = ap.parse_args()
@@ -137,6 +141,8 @@ def main():
         if a.engine == "owl":
             p["engine"] = "owl"
             if a.arg and a.arg.lower().endswith(".xlsx"): p["xlsx"] = owl_xlsx(a.arg)
+        if bool(a.odoo_file) != bool(a.odoo_base): ap.error("sheet: --odoo-file and --odoo-base go together")
+        if a.odoo_file: p["data"] = {"odoo": {"fileId": a.odoo_file, "versionId": a.odoo_base}}
     elif a.cmd == "patch":
         tool, html = "live_patch", a.html if a.html is not None else ("" if a.mode == "remove" else read(a.arg))
         p["ops"] = [{"target": a.target, "mode": a.mode, "html": html}] if a.target else []
