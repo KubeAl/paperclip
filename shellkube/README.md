@@ -17,6 +17,7 @@ Runs the smini instance `~/.paperclip/instances/default` (moved from rahuls-mac-
 | Core patch | Files | Upstream PR |
 |---|---|---|
 | H1: `userEmail` on the plugin action actor (`PluginPerformActionActorContext`), for mapping a board user to an external account | `packages/plugins/sdk/src/{protocol,worker-rpc-host,testing}.ts`, `server/src/routes/plugins.ts` (+ tests) | — |
+| Plugin `ctx.entities.list` honours `scopeKind`/`scopeId` (the SDK documents them; the host ignored them, so a per-issue lookup saw every issue's rows) | `server/src/services/plugin-registry.ts`, `packages/shared/src/types/plugin.ts` | — |
 
 ## Update from upstream
 `shellkube/scripts/sync-upstream.sh` — fetch → ff master → push master → merge into shellkube (stops on conflict).

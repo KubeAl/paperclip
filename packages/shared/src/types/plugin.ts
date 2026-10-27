@@ -885,6 +885,10 @@ export interface PluginEntityQuery {
   entityType?: string;
   /** Optional filter by external system identifier. */
   externalId?: string;
+  /** Optional filter by scope kind. */
+  scopeKind?: PluginStateScopeKind;
+  /** Optional filter by scope id. */
+  scopeId?: string;
   /** Maximum number of records to return. Defaults to 100. */
   limit?: number;
   /** Number of records to skip. Defaults to 0. */
