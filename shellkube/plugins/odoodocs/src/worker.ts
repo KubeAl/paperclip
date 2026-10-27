@@ -24,6 +24,7 @@ function id(v: unknown, label: string): number {
   return n;
 }
 const optId = (v: unknown, label: string) => (v === undefined || v === null || v === "" ? undefined : id(v, label));
+const template = (p: Record<string, unknown>) => (p.templateId ? { template_id: id(p.templateId, "templateId") } : {});
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 const orNull = (v: unknown) => text(v).trim() || null;
 function need(v: unknown, label: string) {
@@ -157,8 +158,7 @@ const plugin = definePlugin({
     userAction("create", async (p, companyId, c, login) => {
       const taskId = await needTask(uuid(p.issueId, "issueId"), companyId, c);
       return gateway(c, companyId, "agent_create", { res_model: MODEL, res_id: taskId, name: need(p.name, "name"),
-        content_b64: text(p.contentB64) || null, template_id: optId(p.templateId, "templateId") ?? null,
-        note: text(p.note) || "from Paperclip", as_login: login });
+        content_b64: text(p.contentB64) || null, ...template(p), note: text(p.note) || "from Paperclip", as_login: login });
     });
     // A new version as the person (the live panel's "Save to Odoo task").
     userAction("write", async (p, companyId, c, login) =>
@@ -249,7 +249,7 @@ const plugin = definePlugin({
     tool("doc_create", async (p, run, c) => {
       const issueId = uuid(p.issueId, "issueId"), taskId = await needTask(issueId, run.companyId, c), note = text(p.note);
       const r = await agentCall(c, run.companyId, run.agentId, "agent_create", { res_model: MODEL, res_id: taskId, name: need(p.name, "name"),
-        content_b64: text(p.contentB64) || null, template_id: optId(p.templateId, "templateId") ?? null, note });
+        content_b64: text(p.contentB64) || null, ...template(p), note });
       if (r.status === "OK") await saved(issueId, run, c, Number(r.id), r.version, note);
       return r;
     });
