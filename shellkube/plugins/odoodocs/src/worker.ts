@@ -315,10 +315,10 @@ const plugin = definePlugin({
     await receive!(input);
   },
 
-  // Saving the config installs or updates the managed skill in that company's skill library.
+  // Saving the config (re)installs the managed skill from this build into that company's skill library.
   async onConfigChanged(_config, context) {
     keys.clear();
-    if (context?.companyId) await host?.skills.managed.reconcile("odoo-docs", context.companyId);
+    if (context?.companyId) await host?.skills.managed.reset("odoo-docs", context.companyId);
   },
 });
 
