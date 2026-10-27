@@ -23,7 +23,7 @@ const pluginId = fetch("/api/plugins", { credentials: "include" }).then((r) => r
   .then((list: Array<{ id: string; pluginKey: string }>) => list.find((p) => p.pluginKey === "shellkube.livepanel")!.id);
 export const frameUrl = (dir: string) => pluginId.then((id) => `/_plugins/${id}/ui/${dir}/index.html`);
 const line = "1px solid var(--border)";
-const button = { fontSize: 12, padding: "3px 10px", borderRadius: 6, border: line, background: "transparent", cursor: "pointer" } as const;
+const button = { fontSize: 12, padding: "3px 10px", borderRadius: 6, border: line, background: "transparent", cursor: "pointer", whiteSpace: "nowrap" } as const;
 
 // Height that lets `ref`'s panel section fill the visible side panel tab (the tab body scrolls, so it has no height to inherit).
 export function useFillHeight(ref: RefObject<HTMLElement | null>, fallback: number) {
@@ -117,7 +117,7 @@ export function OwlSheet({ data, name, submit, odoo }: { data: unknown; name: st
     <div style={{ display: "grid", gap: 6 }}>
       <iframe ref={ref} title="Spreadsheet (o-spreadsheet)" src={url || undefined} sandbox="allow-scripts allow-downloads" allow="clipboard-read; clipboard-write"
         style={{ display: "block", width: "100%", height, border: line, borderRadius: 4 }} />
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         <button style={button} onClick={() => send(false)}>Save</button>
         {linked && <button style={button} onClick={saveToOdoo}>Save to Odoo task</button>}
         <button style={{ ...button, background: "var(--primary)", color: "var(--primary-foreground)", borderColor: "var(--primary)" }} onClick={() => send(true)}>Send to agent</button>
