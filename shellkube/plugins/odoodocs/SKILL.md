@@ -17,14 +17,15 @@ The task's "Odoo files" tab links it to an Odoo `project.task`. You work on that
     odoo-docs share FILE_ID [--expires YYYY-MM-DD] [--password P]   # public link; only when the task asks for one
     odoo-docs request NAME (--user LOGIN | --email EMAIL) [--deadline YYYY-MM-DD] [--note TEXT]   # ask someone to upload a file
 
-Every write makes a new version; nothing is overwritten. Your saves show as a short line in the task thread.
+Every write makes a new version; nothing is overwritten. Each save posts a short line in the task thread (file, version,
+your note, link). Do not post your own "Saved ..." comment; your end-of-run comment only adds what that line does not say.
 Exit code 3 = LOCKED or CONFLICT (printed as JSON).
 
 Rules:
 - Always pass `--note`: one line that says what you changed.
 - `--base` is the `version_id` you read. **CONFLICT** means someone saved after you read: read the new version, apply your
   change to it again, write with the new base. Never write your old copy over it.
-- **LOCKED** means a person has the file open in the editor. Stop: do not retry or wait in a loop. End your run and say in
-  your comment that the file was locked. You are woken on the same task when the file is free.
+- **LOCKED** means a person has the file open in the editor. Stop: do not retry or wait in a loop. Say in your comment
+  that the file was locked, set the task to `blocked` and end your run. You are woken on the same task when the file is free.
 - Round-trip only simple files (plain text, .csv, .md, small .docx/.xlsx you generate yourself). Do not rewrite complex
   documents made by people (tracked changes, comments, complex layout): comment instead.
