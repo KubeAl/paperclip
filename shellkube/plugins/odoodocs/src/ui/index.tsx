@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { usePluginAction, usePluginData, usePluginStream, type PluginDetailTabProps } from "@paperclipai/plugin-sdk/ui";
-import { pluginId } from "./docs";
+import { pluginId, warmUpEditor } from "./docs";
 
 type FileRow = { id: number; name: string; mimetype: string; size: number; version: number; version_id: number; locked: boolean;
   editors: Array<{ id: number; name: string }>; write_date: string; author_name: string; odoo_url: string };
@@ -63,6 +63,7 @@ function Files({ companyId, issueId }: { companyId: string; issueId: string }) {
   const [plugin, setPlugin] = useState("");
   const { busy, run, errorLine, setError } = useRun();
   useEffect(() => { pluginId().then(setPlugin, () => undefined); }, []);
+  useEffect(() => { if (link?.docsUrl) warmUpEditor(link.docsUrl); }, [link?.docsUrl]);
 
   const load = useCallback(async () => {
     const r = (await call.list({ companyId, issueId })) as { files: FileRow[] };

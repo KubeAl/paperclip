@@ -1,7 +1,7 @@
 // Loads ONLYOFFICE's api.js from the Docs server and opens a DocEditor in `el` (replaced by the editor iframe).
 type EditorConfig = { status: string; docs_url: string; config: Record<string, unknown> };
 type DocEditor = { destroyEditor(): void };
-declare global { interface Window { DocsAPI?: { DocEditor: new (id: string, config: Record<string, unknown>) => DocEditor } } }
+declare global { interface Window { DocsAPI?: { DocEditor: (new (id: string, config: Record<string, unknown>) => DocEditor) & { warmUp(id: string): void } } } }
 
 let api: Promise<void> | undefined;
 function loadApi(docsUrl: string) {
@@ -13,6 +13,19 @@ function loadApi(docsUrl: string) {
     document.head.appendChild(s);
   });
   return api;
+}
+
+// ONLYOFFICE's own warm-up: a 0x0 preload iframe fills the browser cache, so the first editor open is fast.
+let warmed = false;
+export function warmUpEditor(docsUrl: string) {
+  if (warmed) return;
+  warmed = true;
+  loadApi(docsUrl).then(() => {
+    const el = document.createElement("div");
+    el.id = "oo-warmup";
+    document.body.appendChild(el);
+    window.DocsAPI!.DocEditor.warmUp(el.id);
+  }, () => { warmed = false; });
 }
 
 let seq = 0;
