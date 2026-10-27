@@ -772,6 +772,7 @@ export function pluginRoutes(
       return {
         type: "agent",
         userId: null,
+        userEmail: null,
         agentId: req.actor.agentId ?? null,
         runId: req.actor.runId ?? null,
         companyId: scopedCompanyId,
@@ -781,6 +782,7 @@ export function pluginRoutes(
       return {
         type: "user",
         userId: req.actor.userId ?? null,
+        userEmail: req.actor.userEmail ?? null,
         agentId: null,
         runId: req.actor.runId ?? null,
         companyId: scopedCompanyId,
@@ -789,6 +791,7 @@ export function pluginRoutes(
     return {
       type: "system",
       userId: null,
+      userEmail: null,
       agentId: null,
       runId: req.actor.runId ?? null,
       companyId: scopedCompanyId,

@@ -174,6 +174,7 @@ describe("worker performAction context", () => {
         actor: {
           type: "system",
           userId: null,
+          userEmail: null,
           agentId: null,
           runId: null,
           companyId: null,

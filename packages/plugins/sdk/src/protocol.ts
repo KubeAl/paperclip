@@ -428,6 +428,8 @@ export interface PluginPerformActionActorContext {
   type: PluginPerformActionActorType;
   /** Authenticated board user id when `type === "user"`, otherwise null. */
   userId: string | null;
+  /** Email of the authenticated board user when `type === "user"` and known, otherwise null. */
+  userEmail: string | null;
   /** Authenticated agent id when `type === "agent"`, otherwise null. */
   agentId: string | null;
   /** Authenticated heartbeat/run id when available. */

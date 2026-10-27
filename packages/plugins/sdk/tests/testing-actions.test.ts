@@ -47,6 +47,7 @@ describe("createTestHarness action context", () => {
         actor: {
           type: "user",
           userId: "board-user-1",
+          userEmail: "board-user-1@example.com",
           runId: "run-1",
         },
       },
@@ -57,6 +58,7 @@ describe("createTestHarness action context", () => {
     expect(result.actor).toEqual({
       type: "user",
       userId: "board-user-1",
+      userEmail: "board-user-1@example.com",
       agentId: null,
       runId: "run-1",
       companyId: "host-company",

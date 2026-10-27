@@ -619,6 +619,7 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
     const actor = Object.freeze({
       type: actorTypeOrSystem(actorInput?.type),
       userId: stringOrNull(actorInput?.userId),
+      userEmail: stringOrNull(actorInput?.userEmail),
       agentId: stringOrNull(actorInput?.agentId),
       runId: stringOrNull(actorInput?.runId),
       companyId,

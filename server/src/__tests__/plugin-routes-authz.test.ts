@@ -741,6 +741,7 @@ describe("plugin tool and bridge authz", () => {
       actorContext: {
         type: "user",
         userId: "admin-1",
+        userEmail: null,
         agentId: null,
         runId: null,
         companyId: null,
@@ -752,7 +753,7 @@ describe("plugin tool and bridge authz", () => {
   it("passes authenticated actor context and overrides spoofed company scope for plugin actions", async () => {
     readyPlugin();
     const call = vi.fn().mockResolvedValue({ ok: true });
-    const { app } = await createApp(boardActor({ runId: runA }), {}, {
+    const { app } = await createApp(boardActor({ runId: runA, userEmail: "user-1@example.com" }), {}, {
       bridgeDeps: {
         workerManager: { call },
       },
@@ -778,6 +779,7 @@ describe("plugin tool and bridge authz", () => {
       actorContext: {
         type: "user",
         userId: "user-1",
+        userEmail: "user-1@example.com",
         agentId: null,
         runId: runA,
         companyId: companyA,
@@ -838,6 +840,7 @@ describe("plugin tool and bridge authz", () => {
       actorContext: {
         type: "agent",
         userId: null,
+        userEmail: null,
         agentId: agentA,
         runId: runA,
         companyId: companyA,
@@ -867,6 +870,7 @@ describe("plugin tool and bridge authz", () => {
       actorContext: {
         type: "agent",
         userId: null,
+        userEmail: null,
         agentId: agentA,
         runId: runA,
         companyId: companyA,

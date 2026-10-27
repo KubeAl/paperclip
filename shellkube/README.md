@@ -16,7 +16,7 @@ Runs the smini instance `~/.paperclip/instances/default` (moved from rahuls-mac-
 
 | Core patch | Files | Upstream PR |
 |---|---|---|
-| (none yet) | | |
+| H1: `userEmail` on the plugin action actor (`PluginPerformActionActorContext`), for mapping a board user to an external account | `packages/plugins/sdk/src/{protocol,worker-rpc-host,testing}.ts`, `server/src/routes/plugins.ts` (+ tests) | — |
 
 ## Update from upstream
 `shellkube/scripts/sync-upstream.sh` — fetch → ff master → push master → merge into shellkube (stops on conflict).

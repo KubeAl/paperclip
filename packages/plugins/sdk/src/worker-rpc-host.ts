@@ -2008,6 +2008,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
     const actor = Object.freeze({
       type: actorTypeOrSystem(rawActor?.type),
       userId: stringOrNull(rawActor?.userId),
+      userEmail: stringOrNull(rawActor?.userEmail),
       agentId: stringOrNull(rawActor?.agentId),
       runId: stringOrNull(rawActor?.runId),
       companyId: stringOrNull(rawActor?.companyId),
