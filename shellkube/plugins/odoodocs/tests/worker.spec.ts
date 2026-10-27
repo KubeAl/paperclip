@@ -1,25 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestHarness, type TestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest";
-import plugin from "../src/worker";
+import plugin, { sign } from "../src/worker";
 
 const companyId = "11111111-1111-4111-8111-111111111111";
 const issueId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
 const ref = (secretId: string) => ({ type: "secret_ref", secretId });
 const config = { odooUrl: "https://odoo.test", odooDb: "demo19", docsUrl: "https://docs.test",
-  gatewayKey: ref("gw"), agentKeys: { [agentId]: ref("ratchet") } };
+  gatewayKey: ref("gw"), agentKeys: { [agentId]: ref("ratchet") }, webhookSecret: ref("hook") };
 const user = { actor: { type: "user" as const, userId: "u1", userEmail: "alice@example.com", companyId }, companyId };
 const run = { agentId, companyId, runId: "r1", projectId: "p1" };
 
 let h: TestHarness;
 let calls: Array<{ url: string; auth: string; db: string; body: Record<string, unknown> }>;
 let reply: (method: string) => { status?: number; json: unknown };
+let resolved: string[];
 
 beforeEach(async () => {
-  h = createTestHarness({ manifest, config });
-  h.seed({ issues: [{ id: issueId, companyId } as never] });
-  h.ctx.secrets.resolve = async (r) => `key-${(r as { secretId: string }).secretId}`;
+  h = createTestHarness({ manifest, config, capabilities: [...manifest.capabilities!, "issue.comments.read"] });
+  h.seed({
+    issues: [{ id: issueId, companyId, identifier: "SHEA-1", status: "backlog", assigneeAgentId: null } as never],
+    agents: [{ id: agentId, companyId, name: "Ratchet", status: "idle" } as never],
+    accessMembers: [{ companyId, principalType: "user", principalId: "u1", status: "active", membershipRole: "owner" } as never],
+  });
+  resolved = [];
+  h.ctx.secrets.resolve = async (r) => { const id = (r as { secretId: string }).secretId; resolved.push(id); return `key-${id}`; };
   calls = [];
   reply = () => ({ json: { status: "OK", files: [{ id: 7, name: "a.docx" }] } });
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
@@ -31,6 +37,13 @@ beforeEach(async () => {
   await plugin.definition.setup(h.ctx);
 });
 afterEach(() => vi.unstubAllGlobals());
+
+const link = async () => { await h.performAction("link", { issueId, taskId: 42 }, user); calls = []; };
+const comments = () => h.ctx.issues.listComments(issueId, companyId);
+const webhook = (ev: Record<string, unknown>, secret = "key-hook") => {
+  const rawBody = JSON.stringify({ db: "demo19", res_model: "project.task", res_id: 42, ...ev });
+  return plugin.definition.onWebhook!({ endpointKey: "odoo", rawBody, requestId: "q", headers: { "x-shellkube-signature": sign(rawBody, secret) } });
+};
 
 describe("Files tab actions", () => {
   it("links, lists and unlinks as the signed-in user through the gateway key", async () => {
@@ -59,16 +72,57 @@ describe("Files tab actions", () => {
     expect(calls).toEqual([]);
   });
 
-  it("asks for the editor config as the user", async () => {
-    await h.performAction("editor-config", { fileId: 7 }, user);
-    expect(calls[0].body).toEqual({ ids: [7], mode: "edit", as_login: "alice@example.com" });
+  it("passes the person's login to every phase 2 method", async () => {
+    await link();
+    const as_login = "alice@example.com";
+    await h.performAction("create", { issueId, name: "Offer.docx", templateId: 5 }, user);
+    await h.performAction("write", { fileId: 7, contentB64: "aGk=", baseVersionId: 3 }, user);
+    await h.performAction("export-pdf", { fileId: 7 }, user);
+    await h.performAction("share", { fileId: 7, expires: "2026-12-31", password: "" }, user);
+    await h.performAction("request", { issueId, name: "Signed contract", partnerEmail: "bob@example.com", deadline: "" }, user);
+    await h.performAction("templates", {}, user);
+    expect(calls.map((c) => [c.url.split("/").pop(), c.body])).toEqual([
+      ["agent_create", { res_model: "project.task", res_id: 42, name: "Offer.docx", content_b64: null, template_id: 5, note: "from Paperclip", as_login }],
+      ["agent_write", { ids: [7], content_b64: "aGk=", base_version_id: 3, note: "from Paperclip", as_login }],
+      ["agent_export_pdf", { ids: [7], as_login }],
+      ["agent_share", { ids: [7], expires: "2026-12-31", password: null, as_login }],
+      ["agent_request", { res_model: "project.task", res_id: 42, name: "Signed contract", user_login: null, partner_email: "bob@example.com", deadline: null, note: "", as_login }],
+      ["agent_templates", { as_login }],
+    ]);
+    await expect(h.performAction("request", { issueId, name: "x" }, user)).rejects.toThrow("user login or a partner email");
+  });
+
+  it("caches the Odoo key, drops it on 401 and on a config change", async () => {
+    await link();
+    await plugin.definition.onConfigChanged!(config, {} as never);
+    resolved = [];
+    await h.performAction("list", { issueId }, user);
+    await h.performAction("list", { issueId }, user);
+    expect(resolved).toEqual(["gw"]);
+    reply = () => ({ status: 401, json: { message: "Invalid apikey" } });
+    await expect(h.performAction("list", { issueId }, user)).rejects.toThrow("HTTP 401");
+    reply = () => ({ json: { status: "OK", files: [] } });
+    await h.performAction("list", { issueId }, user);
+    expect(resolved).toEqual(["gw", "gw"]);
+    await plugin.definition.onConfigChanged!(config, {} as never);
+    await h.performAction("list", { issueId }, user);
+    expect(resolved).toEqual(["gw", "gw", "gw"]);
+  });
+
+  it("asks an agent: assigns the task, and the person's comment names the file", async () => {
+    await link();
+    await h.performAction("ask", { issueId, agentId, fileId: 7, name: "a.xlsx", version: 3, versionId: 30, request: "add a total row" }, user);
+    expect(await h.ctx.issues.get(issueId, companyId)).toMatchObject({ assigneeAgentId: agentId, status: "todo" });
+    const [c] = await comments();
+    expect(c).toMatchObject({ authorType: "user", authorUserId: "u1" });
+    expect(c.body).toContain("@Ratchet add a total row");
+    expect(c.body).toContain("Odoo file 7, v3, version_id 30");
   });
 });
 
 describe("agent tools", () => {
   it("use the agent's own key, never as_login, and return LOCKED as a result", async () => {
-    await h.performAction("link", { issueId, taskId: 42 }, user);
-    calls = [];
+    await link();
     reply = () => ({ json: { status: "LOCKED", editors: [{ id: 2, name: "Alice" }], since: "2026-10-27T10:00:00", reason: "editor" } });
     const r = await h.executeTool("doc_write", { fileId: 7, contentB64: "aGk=", baseVersionId: 3 }, run);
     expect(r).toMatchObject({ data: { status: "LOCKED" } });
@@ -85,5 +139,42 @@ describe("agent tools", () => {
       .toEqual({ error: "This agent has no Odoo user (no key in agentKeys)" });
     expect((await h.executeTool("doc_list", { issueId }, run)).error).toMatch(/not linked/);
     expect(calls).toEqual([]);
+  });
+
+  it("post a save line as the agent with the note and an Open link", async () => {
+    await link();
+    reply = (m) => ({ json: m === "agent_write" ? { status: "OK", version_id: 31, version: 4 } : { status: "OK", files: [{ id: 7, name: "a.xlsx" }] } });
+    await h.executeTool("doc_write", { fileId: 7, contentB64: "aGk=", baseVersionId: 30, note: "total row", issueId }, run);
+    const [c] = await comments();
+    expect(c).toMatchObject({ authorType: "agent", authorAgentId: agentId,
+      body: "Saved **a.xlsx** v4 in Odoo: total row · [Open](https://odoo.test/shellkube_dms/oo/editor/7)" });
+  });
+});
+
+describe("Odoo webhook", () => {
+  it("pushes to the task's Files tab and rejects a bad signature", async () => {
+    await link();
+    const emit = vi.spyOn(h.ctx.streams, "emit");
+    await webhook({ event: "version", file_id: 7, version: 4, author_name: "Alice", editors: [] });
+    expect(emit).toHaveBeenCalledWith(`files:${issueId}`, { event: "version", fileId: 7 });
+    await expect(webhook({ event: "version", file_id: 7 }, "wrong")).rejects.toThrow("bad signature");
+    expect(emit).toHaveBeenCalledTimes(1);
+  });
+
+  it("wakes an agent that got LOCKED once the file is free, and only once", async () => {
+    await link();
+    await h.ctx.issues.update(issueId, { assigneeAgentId: agentId, status: "in_progress" }, companyId);
+    reply = () => ({ json: { status: "LOCKED", editors: [{ id: 2, name: "Alice" }] } });
+    await h.executeTool("doc_write", { fileId: 7, contentB64: "aGk=", baseVersionId: 3, issueId }, run);
+    const wake = vi.spyOn(h.ctx.issues, "requestWakeup");
+
+    await webhook({ event: "version", file_id: 7, version: 4, author_name: "Alice", editors: [{ id: 2, name: "Alice" }] }); // force-save, still open
+    expect(wake).not.toHaveBeenCalled();
+    await webhook({ event: "unlocked", file_id: 7, name: "a.xlsx", version: 5, author_name: "Alice", editors: [] });
+    await webhook({ event: "unlocked", file_id: 7, name: "a.xlsx", version: 5, author_name: "Alice", editors: [] });
+    expect(wake).toHaveBeenCalledTimes(1);
+    const all = await comments();
+    expect(all).toHaveLength(1);
+    expect(all[0].body).toContain("@Ratchet **a.xlsx** is free again: v5 by Alice");
   });
 });

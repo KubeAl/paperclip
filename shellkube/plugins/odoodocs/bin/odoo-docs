@@ -3,9 +3,13 @@
 
   odoo-docs list [--query Q]                          # files of the linked Odoo task
   odoo-docs read FILE_ID --out PATH [--version V]    # save the content; prints the metadata
-  odoo-docs write FILE_ID PATH --base VERSION_ID [--note TEXT]
-  odoo-docs create NAME [PATH] [--note TEXT]         # no PATH + .docx/.xlsx/.pptx name = blank file
+  odoo-docs write FILE_ID PATH --base VERSION_ID --note TEXT
+  odoo-docs create NAME [PATH] [--template ID] [--note TEXT]   # no PATH + .docx/.xlsx/.pptx name = blank file
   odoo-docs comment FILE_ID TEXT
+  odoo-docs templates                                 # templates for create --template
+  odoo-docs pdf FILE_ID                               # PDF of the file, saved next to it in Odoo
+  odoo-docs share FILE_ID [--expires YYYY-MM-DD] [--password P]
+  odoo-docs request NAME (--user LOGIN | --email EMAIL) [--deadline YYYY-MM-DD] [--note TEXT]
 
 Uses PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_AGENT_ID, PAPERCLIP_RUN_ID, PAPERCLIP_COMPANY_ID and
 PAPERCLIP_TASK_ID (or --issue). Prints JSON. Exit 1 on error, 3 on LOCKED or CONFLICT.
@@ -33,7 +37,7 @@ def b64(path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["list", "read", "write", "create", "comment"])
+    ap.add_argument("cmd", choices=["list", "read", "write", "create", "comment", "templates", "pdf", "share", "request"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--issue", default=E.get("PAPERCLIP_TASK_ID"))
     ap.add_argument("--query")
@@ -41,24 +45,43 @@ def main():
     ap.add_argument("--version", type=int)
     ap.add_argument("--base", type=int)
     ap.add_argument("--note", default="")
+    ap.add_argument("--template", type=int)
+    ap.add_argument("--expires")
+    ap.add_argument("--password")
+    ap.add_argument("--user")
+    ap.add_argument("--email")
+    ap.add_argument("--deadline")
     a = ap.parse_args()
-    need = {"list": (0, 0), "read": (1, 1), "write": (2, 2), "create": (1, 2), "comment": (2, 2)}[a.cmd]
+    need = {"list": (0, 0), "read": (1, 1), "write": (2, 2), "create": (1, 2), "comment": (2, 2), "templates": (0, 0),
+            "pdf": (1, 1), "share": (1, 1), "request": (1, 1)}[a.cmd]
     if not need[0] <= len(a.args) <= need[1]:
         ap.error(f"{a.cmd}: wrong number of arguments")
-    if a.cmd in ("list", "create") and not a.issue:
+    if a.cmd in ("list", "create", "request") and not a.issue:
         sys.exit("odoo-docs: no task: set PAPERCLIP_TASK_ID or pass --issue")
+    opt = lambda **kw: {k: v for k, v in kw.items() if v}
     if a.cmd == "list":
-        tool, p = "doc_list", {"issueId": a.issue, **({"query": a.query} if a.query else {})}
+        tool, p = "doc_list", {"issueId": a.issue, **opt(query=a.query)}
     elif a.cmd == "read":
         if not a.out: ap.error("read: --out PATH is required")
-        tool, p = "doc_read", {"fileId": int(a.args[0]), **({"versionId": a.version} if a.version else {})}
+        tool, p = "doc_read", {"fileId": int(a.args[0]), **opt(versionId=a.version)}
     elif a.cmd == "write":
         if not a.base: ap.error("write: --base VERSION_ID is required (the version_id you read)")
-        tool, p = "doc_write", {"fileId": int(a.args[0]), "contentB64": b64(a.args[1]), "baseVersionId": a.base, "note": a.note}
+        tool, p = "doc_write", {"fileId": int(a.args[0]), "contentB64": b64(a.args[1]), "baseVersionId": a.base, "note": a.note, **opt(issueId=a.issue)}
     elif a.cmd == "create":
-        tool, p = "doc_create", {"issueId": a.issue, "name": a.args[0], "note": a.note, **({"contentB64": b64(a.args[1])} if len(a.args) > 1 else {})}
-    else:
+        tool, p = "doc_create", {"issueId": a.issue, "name": a.args[0], "note": a.note,
+                                 **opt(contentB64=len(a.args) > 1 and b64(a.args[1]), templateId=a.template)}
+    elif a.cmd == "comment":
         tool, p = "doc_comment", {"fileId": int(a.args[0]), "body": a.args[1]}
+    elif a.cmd == "templates":
+        tool, p = "doc_templates", {}
+    elif a.cmd == "pdf":
+        tool, p = "doc_export_pdf", {"fileId": int(a.args[0])}
+    elif a.cmd == "share":
+        tool, p = "doc_share", {"fileId": int(a.args[0]), **opt(expires=a.expires, password=a.password)}
+    else:
+        if bool(a.user) == bool(a.email): ap.error("request: give --user LOGIN or --email EMAIL")
+        tool, p = "doc_request", {"issueId": a.issue, "name": a.args[0], "note": a.note,
+                                  **opt(userLogin=a.user, partnerEmail=a.email, deadline=a.deadline)}
     project = call(f"/api/issues/{a.issue}").get("projectId") if a.issue else None
     res = call("/api/plugins/tools/execute", {"tool": "shellkube.odoodocs:" + tool, "parameters": p, "runContext": {
         "agentId": E["PAPERCLIP_AGENT_ID"], "runId": E["PAPERCLIP_RUN_ID"], "companyId": E["PAPERCLIP_COMPANY_ID"], "projectId": project}})
