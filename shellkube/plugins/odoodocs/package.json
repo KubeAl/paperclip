@@ -1,0 +1,16 @@
+{
+  "name": "@shellkube/paperclip-plugin-odoodocs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shellkube Odoo documents: files of the linked Odoo task, ONLYOFFICE editor, agent tools",
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "../../../node_modules/.bin/vitest run --config vitest.config.ts"
+  }
+}

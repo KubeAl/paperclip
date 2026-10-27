@@ -36,3 +36,4 @@ Note: upstream migrations only go forward — an older build cannot run on a new
 
 ## Plugins
 - `plugins/planner` — due/start dates, calendar (incl. routine runs), bookmarks, auto-start job. See its README.
+- `plugins/odoodocs` — Odoo task files on a task (Files tab, ONLYOFFICE editor, agent tools, `odoo-docs` CLI). See its README.

@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""odoo-docs: the Odoo files of your current Paperclip task (plugin shellkube.odoodocs). Skill: odoo-docs.
+
+  odoo-docs list [--query Q]                          # files of the linked Odoo task
+  odoo-docs read FILE_ID --out PATH [--version V]    # save the content; prints the metadata
+  odoo-docs write FILE_ID PATH --base VERSION_ID [--note TEXT]
+  odoo-docs create NAME [PATH] [--note TEXT]         # no PATH + .docx/.xlsx/.pptx name = blank file
+  odoo-docs comment FILE_ID TEXT
+
+Uses PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_AGENT_ID, PAPERCLIP_RUN_ID, PAPERCLIP_COMPANY_ID and
+PAPERCLIP_TASK_ID (or --issue). Prints JSON. Exit 1 on error, 3 on LOCKED or CONFLICT.
+"""
+import argparse, base64, json, os, sys, urllib.request, urllib.error
+
+E = os.environ
+
+
+def call(path, body=None):
+    req = urllib.request.Request(E["PAPERCLIP_API_URL"].rstrip("/") + path, method="POST" if body is not None else "GET",
+                                 data=None if body is None else json.dumps(body).encode(),
+                                 headers={"Authorization": "Bearer " + E["PAPERCLIP_API_KEY"], "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"odoo-docs: HTTP {e.code}: {e.read().decode()[:500]}")
+
+
+def b64(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("cmd", choices=["list", "read", "write", "create", "comment"])
+    ap.add_argument("args", nargs="*")
+    ap.add_argument("--issue", default=E.get("PAPERCLIP_TASK_ID"))
+    ap.add_argument("--query")
+    ap.add_argument("--out")
+    ap.add_argument("--version", type=int)
+    ap.add_argument("--base", type=int)
+    ap.add_argument("--note", default="")
+    a = ap.parse_args()
+    need = {"list": (0, 0), "read": (1, 1), "write": (2, 2), "create": (1, 2), "comment": (2, 2)}[a.cmd]
+    if not need[0] <= len(a.args) <= need[1]:
+        ap.error(f"{a.cmd}: wrong number of arguments")
+    if a.cmd in ("list", "create") and not a.issue:
+        sys.exit("odoo-docs: no task: set PAPERCLIP_TASK_ID or pass --issue")
+    if a.cmd == "list":
+        tool, p = "doc_list", {"issueId": a.issue, **({"query": a.query} if a.query else {})}
+    elif a.cmd == "read":
+        if not a.out: ap.error("read: --out PATH is required")
+        tool, p = "doc_read", {"fileId": int(a.args[0]), **({"versionId": a.version} if a.version else {})}
+    elif a.cmd == "write":
+        if not a.base: ap.error("write: --base VERSION_ID is required (the version_id you read)")
+        tool, p = "doc_write", {"fileId": int(a.args[0]), "contentB64": b64(a.args[1]), "baseVersionId": a.base, "note": a.note}
+    elif a.cmd == "create":
+        tool, p = "doc_create", {"issueId": a.issue, "name": a.args[0], "note": a.note, **({"contentB64": b64(a.args[1])} if len(a.args) > 1 else {})}
+    else:
+        tool, p = "doc_comment", {"fileId": int(a.args[0]), "body": a.args[1]}
+    project = call(f"/api/issues/{a.issue}").get("projectId") if a.issue else None
+    res = call("/api/plugins/tools/execute", {"tool": "shellkube.odoodocs:" + tool, "parameters": p, "runContext": {
+        "agentId": E["PAPERCLIP_AGENT_ID"], "runId": E["PAPERCLIP_RUN_ID"], "companyId": E["PAPERCLIP_COMPANY_ID"], "projectId": project}})
+    r = res.get("result", res)
+    if r.get("error"):
+        sys.exit("odoo-docs: " + str(r["error"]))
+    data = r.get("data") or json.loads(r.get("content", "{}"))
+    if a.cmd == "read" and data.get("status") == "OK":
+        with open(a.out, "wb") as f:
+            f.write(base64.b64decode(data.pop("content_b64")))
+        data["saved_to"] = a.out
+    print(json.dumps(data, indent=1))
+    if data.get("status") in ("LOCKED", "CONFLICT"):
+        sys.exit(3)
+
+
+main()
