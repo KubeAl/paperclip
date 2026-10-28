@@ -11,9 +11,13 @@
   odoo-docs pdf FILE_ID                               # PDF of the file, saved next to it in Odoo
   odoo-docs share FILE_ID [--expires YYYY-MM-DD] [--password P]
   odoo-docs request NAME (--user LOGIN | --email EMAIL) [--deadline YYYY-MM-DD] [--note TEXT]
+  odoo-docs kb-search [--query Q]                     # Knowledge pages
+  odoo-docs kb-read PAGE_ID --out PATH                # the page as markdown; prints history_id
+  odoo-docs kb-write PAGE_ID PATH --base HISTORY_ID [--section HEADING] --note TEXT   # append, or replace one section
+  odoo-docs kb-create NAME PATH [--parent PAGE_ID] --note TEXT
 
 Uses PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_AGENT_ID, PAPERCLIP_RUN_ID, PAPERCLIP_COMPANY_ID and
-PAPERCLIP_TASK_ID (or --issue). Prints JSON. Exit 1 on error, 3 on LOCKED or CONFLICT.
+PAPERCLIP_TASK_ID (or --issue; optional for kb-*). Prints JSON. Exit 1 on error, 3 on LOCKED or CONFLICT.
 """
 import argparse, base64, json, os, sys, urllib.request, urllib.error
 
@@ -38,7 +42,8 @@ def b64(path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["list", "read", "write", "create", "comment", "templates", "pdf", "share", "request"])
+    ap.add_argument("cmd", choices=["list", "read", "write", "create", "comment", "templates", "pdf", "share", "request",
+                                       "kb-search", "kb-read", "kb-write", "kb-create"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--issue", default=E.get("PAPERCLIP_TASK_ID"))
     ap.add_argument("--query")
@@ -53,9 +58,12 @@ def main():
     ap.add_argument("--user")
     ap.add_argument("--email")
     ap.add_argument("--deadline")
+    ap.add_argument("--section")
+    ap.add_argument("--parent", type=int)
     a = ap.parse_args()
     need = {"list": (0, 0), "read": (1, 1), "write": (2, 2), "create": (1, 2), "comment": (2, 2), "templates": (0, 0),
-            "pdf": (1, 1), "share": (1, 1), "request": (1, 1)}[a.cmd]
+            "pdf": (1, 1), "share": (1, 1), "request": (1, 1),
+            "kb-search": (0, 0), "kb-read": (1, 1), "kb-write": (2, 2), "kb-create": (2, 2)}[a.cmd]
     if not need[0] <= len(a.args) <= need[1]:
         ap.error(f"{a.cmd}: wrong number of arguments")
     if a.cmd in ("list", "create", "request") and not a.issue:
@@ -75,6 +83,18 @@ def main():
                                        mermaid=a.mermaid and open(a.mermaid).read())}
     elif a.cmd == "comment":
         tool, p = "doc_comment", {"fileId": int(a.args[0]), "body": a.args[1]}
+    elif a.cmd == "kb-search":
+        tool, p = "kb_search", opt(query=a.query)
+    elif a.cmd == "kb-read":
+        if not a.out: ap.error("kb-read: --out PATH is required")
+        tool, p = "kb_read", {"pageId": int(a.args[0])}
+    elif a.cmd == "kb-write":
+        if not a.base: ap.error("kb-write: --base HISTORY_ID is required (the history_id you read)")
+        tool, p = "kb_write", {"pageId": int(a.args[0]), "markdown": open(a.args[1]).read(), "baseHistoryId": a.base,
+                               "summary": a.note, **opt(section=a.section, issueId=a.issue)}
+    elif a.cmd == "kb-create":
+        tool, p = "kb_write", {"name": a.args[0], "markdown": open(a.args[1]).read(), "summary": a.note,
+                               **opt(parentId=a.parent, issueId=a.issue)}
     elif a.cmd == "templates":
         tool, p = "doc_templates", {}
     elif a.cmd == "pdf":
@@ -95,6 +115,10 @@ def main():
     if a.cmd == "read" and data.get("status") == "OK":
         with open(a.out, "wb") as f:
             f.write(base64.b64decode(data.pop("content_b64")))
+        data["saved_to"] = a.out
+    if a.cmd == "kb-read" and data.get("status") == "OK":
+        with open(a.out, "w") as f:
+            f.write(data.pop("markdown"))
         data["saved_to"] = a.out
     print(json.dumps(data, indent=1))
     if data.get("status") in ("LOCKED", "CONFLICT"):

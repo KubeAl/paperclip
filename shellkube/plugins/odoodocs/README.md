@@ -27,6 +27,10 @@ Interface: `kubo19-docs/docs/shellkube_documents/CONTRACT.md` (Odoo JSON-2 metho
 - **Agent tools** (allowed by tool policy "Odoo docs tools for agents"): `doc_list, doc_read, doc_write, doc_create,
   doc_comment, doc_templates, doc_export_pdf, doc_share, doc_request` with the calling agent's own key (no `as_login`).
   LOCKED/CONFLICT come back as results.
+- **Knowledge tools**: `kb_search, kb_read, kb_write` call `document.page` (Odoo module `document_page_agent`) with the
+  agent's key: pages as markdown, `kb_write` appends, replaces one section (`section`) or creates (no `pageId`), with
+  `baseHistoryId` and OK/LOCKED/CONFLICT. Changes go through the page's approval (`state: to approve`). With `issueId`
+  an OK posts "Saved Knowledge page **<name>**: <summary> · Open". Add them to the agents' tool policy to allow them.
 - **CLI for agents**: `~/infra/paperclip/bin/odoo-docs` (symlink to `bin/odoo-docs`). Managed skill `odoo-docs` (`SKILL.md`),
   installed into the company skill library when the config is saved.
 - The live panel's "Save to Odoo task" calls the `write`/`create` actions here (see livepanel README).

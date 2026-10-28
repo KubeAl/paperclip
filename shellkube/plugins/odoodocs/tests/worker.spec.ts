@@ -166,6 +166,37 @@ describe("diagrams", () => {
   });
 });
 
+describe("Knowledge tools", () => {
+  it("call document.page with the agent's key and pick the write mode from the arguments", async () => {
+    reply = () => ({ json: { status: "OK" } });
+    await h.executeTool("kb_search", { query: "pricing" }, run);
+    await h.executeTool("kb_read", { pageId: 9 }, run);
+    await h.executeTool("kb_write", { pageId: 9, markdown: "more", baseHistoryId: 5 }, run);
+    await h.executeTool("kb_write", { pageId: 9, markdown: "## Steps\n\n- two", baseHistoryId: 5, section: "Steps", summary: "steps" }, run);
+    await h.executeTool("kb_write", { markdown: "# New", parentId: 3 }, run);
+    expect(calls.every((c) => c.auth === "bearer key-ratchet")).toBe(true);
+    expect(calls.map((c) => [c.url.replace("https://odoo.test/json/2/", ""), c.body])).toEqual([
+      ["document.page/kb_search", { query: "pricing", limit: 20 }],
+      ["document.page/kb_read", { ids: [9] }],
+      ["document.page/kb_write", { ids: [9], md: "more", mode: "append", section: null, base_history_id: 5, summary: "" }],
+      ["document.page/kb_write", { ids: [9], md: "## Steps\n\n- two", mode: "replace_section", section: "Steps", base_history_id: 5, summary: "steps" }],
+      ["document.page/kb_write", { md: "# New", mode: "create", name: null, parent_id: 3, summary: "" }],
+    ]);
+    expect((await h.executeTool("kb_write", { pageId: 9, markdown: "x" }, run)).error).toMatch(/baseHistoryId/);
+  });
+
+  it("return CONFLICT as a result and post a save line only for OK", async () => {
+    reply = () => ({ json: { status: "CONFLICT", current_history_id: 6 } });
+    expect(await h.executeTool("kb_write", { pageId: 9, markdown: "x", baseHistoryId: 5, issueId }, run))
+      .toMatchObject({ data: { status: "CONFLICT", current_history_id: 6 } });
+    expect(await comments()).toEqual([]);
+    reply = () => ({ json: { status: "OK", name: "Pricing", state: "to approve", odoo_url: "https://odoo.test/odoo/knowledge/9" } });
+    await h.executeTool("kb_write", { pageId: 9, markdown: "x", baseHistoryId: 5, summary: "new prices", issueId }, run);
+    expect((await comments())[0]).toMatchObject({ authorAgentId: agentId,
+      body: "Saved Knowledge page **Pricing** (waits for approval): new prices · [Open](https://odoo.test/odoo/knowledge/9)" });
+  });
+});
+
 describe("Odoo webhook", () => {
   it("pushes to the task's Files tab and rejects a bad signature", async () => {
     await link();

@@ -3,15 +3,16 @@ import skill from "../SKILL.md";
 
 const issueId = { type: "string", description: "Paperclip task id ($PAPERCLIP_TASK_ID)." };
 const fileId = { type: "number", description: "Odoo file id (dms.file) from doc_list." };
+const pageId = { type: "number", description: "Knowledge page id (document.page) from kb_search." };
 const secretRef = { type: "object", format: "secret-ref" };
 const obj = (required: string[], properties: Record<string, unknown>) => ({ type: "object", required, properties });
 
 const manifest: PaperclipPluginManifestV1 = {
   id: "shellkube.odoodocs",
   apiVersion: 1,
-  version: "0.3.0",
+  version: "0.4.0",
   displayName: "Odoo documents (Shellkube)",
-  description: "Files of the linked Odoo task on a Paperclip task: list, create, edit in ONLYOFFICE, versions, PDF, share, requests; agent tools.",
+  description: "Files of the linked Odoo task on a Paperclip task: list, create, edit in ONLYOFFICE, versions, PDF, share, requests; agent tools for files and Knowledge pages.",
   author: "Shellkube",
   categories: ["connector", "ui"],
   capabilities: ["issues.read", "issues.update", "issues.wakeup", "issue.comments.create", "issue.comments.create_human_attributed",
@@ -63,6 +64,16 @@ const manifest: PaperclipPluginManifestV1 = {
       description: "Ask a person (Odoo user login or contact email) to upload a file to the linked Odoo task. Returns upload_url.",
       parametersSchema: obj(["issueId", "name"], { issueId, name: { type: "string" }, userLogin: { type: "string" },
         partnerEmail: { type: "string" }, deadline: { type: "string", description: "YYYY-MM-DD" }, note: { type: "string" } }) },
+    { name: "kb_search", displayName: "Odoo Knowledge: search",
+      description: "Search the Odoo Knowledge pages you may read (title and text). Returns id, name, parent, tags, history_id, locked, pending_approval, odoo_url.",
+      parametersSchema: obj([], { query: { type: "string" }, limit: { type: "number" } }) },
+    { name: "kb_read", displayName: "Odoo Knowledge: read",
+      description: "Read a Knowledge page as markdown, with history_id (the base for kb_write).",
+      parametersSchema: obj(["pageId"], { pageId }) },
+    { name: "kb_write", displayName: "Odoo Knowledge: write",
+      description: "With pageId: append markdown to the page, or replace one section (section = its heading text; the markdown replaces that heading and its text). baseHistoryId = the history_id you read. Without pageId: create a page (name, parentId). Returns OK (state approved = live, to approve = waits for an approver), LOCKED or CONFLICT (re-read and apply your change again).",
+      parametersSchema: obj(["markdown"], { markdown: { type: "string" }, pageId, baseHistoryId: { type: "number" },
+        section: { type: "string" }, name: { type: "string" }, parentId: { type: "number" }, summary: { type: "string", description: "One line: what you changed (shown to approvers)." }, issueId }) },
   ],
   skills: [{ skillKey: "odoo-docs", displayName: "Odoo docs", description: "Work on the Odoo files of a task with the odoo-docs CLI.", markdown: skill }],
   ui: {

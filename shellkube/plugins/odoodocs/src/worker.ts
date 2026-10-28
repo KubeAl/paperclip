@@ -64,9 +64,10 @@ const plugin = definePlugin({
       return { k, value };
     }
     // One JSON-2 call. Odoo's error body carries a traceback (`debug`); only its message goes back.
-    async function odoo(c: Config, companyId: string, configPath: string, ref: SecretRef, method: string, body: Record<string, unknown>) {
+    async function odoo(c: Config, companyId: string, configPath: string, ref: SecretRef, method: string, body: Record<string, unknown>,
+      model = "dms.file") {
       const key = secret(ref, companyId, configPath);
-      const res = await fetch(`${c.odooUrl.replace(/\/$/, "")}/json/2/dms.file/${method}`, {
+      const res = await fetch(`${c.odooUrl.replace(/\/$/, "")}/json/2/${model}/${method}`, {
         method: "POST",
         headers: { Authorization: `bearer ${await key.value}`, "X-Odoo-Database": c.odooDb, "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -83,10 +84,11 @@ const plugin = definePlugin({
     }
     const gateway = (c: Config, companyId: string, method: string, body: Record<string, unknown>) =>
       odoo(c, companyId, "gatewayKey", c.gatewayKey, method, body);
-    function agentCall(c: Config, companyId: string, agentId: string, method: string, body: Record<string, unknown>) {
+    function agentCall(c: Config, companyId: string, agentId: string, method: string, body: Record<string, unknown>,
+      model = "dms.file") {
       const ref = c.agentKeys?.[agentId];
       if (!ref) throw new Error("This agent has no Odoo user (no key in agentKeys)");
-      return odoo(c, companyId, `agentKeys.${agentId}`, ref, method, body);
+      return odoo(c, companyId, `agentKeys.${agentId}`, ref, method, body, model);
     }
 
     async function issueIn(issueId: string, companyId: string) {
@@ -267,6 +269,28 @@ const plugin = definePlugin({
     tool("doc_request", async (p, run, c) => {
       const taskId = await needTask(uuid(p.issueId, "issueId"), run.companyId, c);
       return agentCall(c, run.companyId, run.agentId, "agent_request", requestBody(p, taskId, null));
+    });
+
+    // ---- Knowledge pages (document.page) as markdown; changes go through the page's approval flow. ----
+    const kb = (run: Run, c: Config, method: string, body: Record<string, unknown>) =>
+      agentCall(c, run.companyId, run.agentId, method, body, "document.page");
+    tool("kb_search", (p, run, c) => kb(run, c, "kb_search", { query: text(p.query) || null, limit: optId(p.limit, "limit") ?? 20 }));
+    tool("kb_read", (p, run, c) => kb(run, c, "kb_read", { ids: [id(p.pageId, "pageId")] }));
+    tool("kb_write", async (p, run, c) => {
+      const mode = p.pageId ? (p.section ? "replace_section" : "append") : "create";
+      const r = await kb(run, c, "kb_write", mode === "create"
+        ? { md: need(p.markdown, "markdown"), mode, name: orNull(p.name), parent_id: optId(p.parentId, "parentId") ?? null, summary: text(p.summary) }
+        : { ids: [id(p.pageId, "pageId")], md: need(p.markdown, "markdown"), mode, section: orNull(p.section),
+          base_history_id: id(p.baseHistoryId, "baseHistoryId"), summary: text(p.summary) });
+      if (p.issueId && r.status === "OK") {
+        const issueId = uuid(p.issueId, "issueId"), pending = r.state === "to approve" ? " (waits for approval)" : "";
+        try {
+          await issueIn(issueId, run.companyId);
+          await ctx.issues.createComment(issueId, `Saved Knowledge page **${r.name}**${pending}${p.summary ? `: ${text(p.summary)}` : ""} · [Open](${r.odoo_url})`,
+            run.companyId, { authorAgentId: run.agentId });
+        } catch (e) { ctx.logger.warn("could not post the save line", { issueId, error: String(e) }); }
+      }
+      return r;
     });
 
     // ---- Odoo webhook: push to open Files tabs; wake agents that waited for a locked file. ----
