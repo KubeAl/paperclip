@@ -219,16 +219,21 @@ const plugin = definePlugin({
     }
     async function savedLine(issueId: string, run: Run, c: Config, fileId: number, version: unknown, note: string) {
       const taskId = await needTask(issueId, run.companyId, c);
-      const files = (await agentCall(c, run.companyId, run.agentId, "agent_list", { res_model: MODEL, res_id: taskId })).files as Array<{ id: number; name: string }>;
-      const name = files?.find((f) => f.id === fileId)?.name ?? `file ${fileId}`;
-      const open = `${c.odooUrl.replace(/\/$/, "")}/shellkube_dms/oo/editor/${fileId}`;
+      const files = (await agentCall(c, run.companyId, run.agentId, "agent_list", { res_model: MODEL, res_id: taskId })).files as Array<{ id: number; name: string; odoo_url: string }>;
+      const file = files?.find((f) => f.id === fileId);
+      const name = file?.name ?? `file ${fileId}`;
+      const open = file && name.toLowerCase().endsWith(".excalidraw") ? file.odoo_url
+        : `${c.odooUrl.replace(/\/$/, "")}/shellkube_dms/oo/editor/${fileId}`;
       await ctx.issues.createComment(issueId, `Saved **${name}** v${version} in Odoo${note ? `: ${note}` : ""} · [Open](${open})`,
         run.companyId, { authorAgentId: run.agentId });
     }
 
     tool("doc_list", async (p, run, c) => {
       const taskId = await needTask(uuid(p.issueId, "issueId"), run.companyId, c);
-      return agentCall(c, run.companyId, run.agentId, "agent_list", { res_model: MODEL, res_id: taskId, query: text(p.query) || null });
+      const r = await agentCall(c, run.companyId, run.agentId, "agent_list", { res_model: MODEL, res_id: taskId, query: text(p.query) || null });
+      // diagram thumbnails are for the Files tab; base64 PNGs only cost agents tokens
+      const files = (r.files as Array<Record<string, unknown>> | undefined)?.map(({ thumbnail_b64: _, ...f }) => f);
+      return files ? { ...r, files } : r;
     });
     tool("doc_read", (p, run, c) =>
       agentCall(c, run.companyId, run.agentId, "agent_read", { ids: [id(p.fileId, "fileId")], version_id: optId(p.versionId, "versionId") ?? null }));
@@ -249,7 +254,7 @@ const plugin = definePlugin({
     tool("doc_create", async (p, run, c) => {
       const issueId = uuid(p.issueId, "issueId"), taskId = await needTask(issueId, run.companyId, c), note = text(p.note);
       const r = await agentCall(c, run.companyId, run.agentId, "agent_create", { res_model: MODEL, res_id: taskId, name: need(p.name, "name"),
-        content_b64: text(p.contentB64) || null, ...template(p), note });
+        content_b64: text(p.contentB64) || null, ...template(p), ...(text(p.mermaid) ? { mermaid: text(p.mermaid) } : {}), note });
       if (r.status === "OK") await saved(issueId, run, c, Number(r.id), r.version, note);
       return r;
     });

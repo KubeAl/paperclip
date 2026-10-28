@@ -151,6 +151,21 @@ describe("agent tools", () => {
   });
 });
 
+describe("diagrams", () => {
+  it("create from Mermaid, open in Odoo from the save line, no thumbnails in doc_list", async () => {
+    await link();
+    const url = "https://odoo.test/odoo/action-shellkube_dms_excalidraw.open?file_id=8";
+    reply = (m) => ({ json: m === "agent_create" ? { status: "OK", id: 8, version_id: 80, version: 1 }
+      : { status: "OK", files: [{ id: 8, name: "Flow.excalidraw", odoo_url: url, thumbnail_b64: "iVBOR" }] } });
+    await h.executeTool("doc_create", { issueId, name: "Flow.excalidraw", mermaid: "graph TD; A-->B", note: "process" }, run);
+    expect(calls[0].body).toEqual({ res_model: "project.task", res_id: 42, name: "Flow.excalidraw", content_b64: null,
+      mermaid: "graph TD; A-->B", note: "process" });
+    expect((await comments())[0].body).toBe(`Saved **Flow.excalidraw** v1 in Odoo: process · [Open](${url})`);
+    const listed = await h.executeTool("doc_list", { issueId }, run);
+    expect(listed.data).toEqual({ status: "OK", files: [{ id: 8, name: "Flow.excalidraw", odoo_url: url }] });
+  });
+});
+
 describe("Odoo webhook", () => {
   it("pushes to the task's Files tab and rejects a bad signature", async () => {
     await link();

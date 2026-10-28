@@ -5,6 +5,7 @@
   odoo-docs read FILE_ID --out PATH [--version V]    # save the content; prints the metadata
   odoo-docs write FILE_ID PATH --base VERSION_ID --note TEXT
   odoo-docs create NAME [PATH] [--template ID] [--note TEXT]   # no PATH + .docx/.xlsx/.pptx name = blank file
+  odoo-docs create NAME.excalidraw --mermaid PATH [--note TEXT]   # a diagram from Mermaid source
   odoo-docs comment FILE_ID TEXT
   odoo-docs templates                                 # templates for create --template
   odoo-docs pdf FILE_ID                               # PDF of the file, saved next to it in Odoo
@@ -46,6 +47,7 @@ def main():
     ap.add_argument("--base", type=int)
     ap.add_argument("--note", default="")
     ap.add_argument("--template", type=int)
+    ap.add_argument("--mermaid")
     ap.add_argument("--expires")
     ap.add_argument("--password")
     ap.add_argument("--user")
@@ -69,7 +71,8 @@ def main():
         tool, p = "doc_write", {"fileId": int(a.args[0]), "contentB64": b64(a.args[1]), "baseVersionId": a.base, "note": a.note, **opt(issueId=a.issue)}
     elif a.cmd == "create":
         tool, p = "doc_create", {"issueId": a.issue, "name": a.args[0], "note": a.note,
-                                 **opt(contentB64=len(a.args) > 1 and b64(a.args[1]), templateId=a.template)}
+                                 **opt(contentB64=len(a.args) > 1 and b64(a.args[1]), templateId=a.template,
+                                       mermaid=a.mermaid and open(a.mermaid).read())}
     elif a.cmd == "comment":
         tool, p = "doc_comment", {"fileId": int(a.args[0]), "body": a.args[1]}
     elif a.cmd == "templates":

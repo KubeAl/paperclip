@@ -4,7 +4,8 @@ import { usePluginAction, usePluginData, usePluginStream, type PluginDetailTabPr
 import { pluginId, warmUpEditor } from "./docs";
 
 type FileRow = { id: number; name: string; mimetype: string; size: number; version: number; version_id: number; locked: boolean;
-  editors: Array<{ id: number; name: string }>; write_date: string; author_name: string; odoo_url: string };
+  editors: Array<{ id: number; name: string }>; write_date: string; author_name: string; odoo_url: string;
+  thumbnail_b64?: string | null };
 type Version = { id: number; version: number; author: string; source: string; note: string; create_date: string; size: number };
 type Link = { taskId: number | null; odooUrl: string; docsUrl: string };
 type Ctx = { companyId: string; issueId: string; plugin: string; reload: () => void };
@@ -212,8 +213,12 @@ function FileItem({ f, ctx, onOpen }: { f: FileRow; ctx: Ctx; onOpen: () => void
     run(async () => { setVersions(((await call.versions({ companyId: ctx.companyId, fileId: f.id })) as { versions: Version[] }).versions); setPanel("versions"); });
   };
   const pdf = () => run(async () => { await call.pdf({ companyId: ctx.companyId, fileId: f.id }); setNote(`PDF saved in Odoo.`); ctx.reload(); });
+  // diagrams open in Odoo's Excalidraw editor (odoo_url), not in ONLYOFFICE
+  const drawing = f.name.toLowerCase().endsWith(".excalidraw");
   return (
     <li style={{ border: line, borderRadius: 8, padding: "6px 8px" }}>
+      {f.thumbnail_b64 && <img src={`data:image/png;base64,${f.thumbnail_b64}`} alt=""
+        style={{ display: "block", maxWidth: "100%", maxHeight: 120, marginBottom: 4, borderRadius: 6, border: line }} />}
       <div style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13, fontWeight: 600, overflowWrap: "anywhere" }}>{f.name}</strong>
         <span style={muted}>v{f.version} · {kb(f.size)}</span>
@@ -222,13 +227,14 @@ function FileItem({ f, ctx, onOpen }: { f: FileRow; ctx: Ctx; onOpen: () => void
       </div>
       <div style={{ ...muted, marginTop: 2 }}>{f.author_name} · {when(f.write_date)}</div>
       <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-        <button style={btn} onClick={onOpen} disabled={!ctx.plugin}>Open</button>
-        {ctx.plugin && <a style={btn} target="_blank" rel="noreferrer" href={editorUrl(ctx, f.id)}>New tab</a>}
+        {drawing && <a style={btn} href={f.odoo_url} target="_blank" rel="noreferrer">Open in Odoo</a>}
+        {!drawing && <button style={btn} onClick={onOpen} disabled={!ctx.plugin}>Open</button>}
+        {!drawing && ctx.plugin && <a style={btn} target="_blank" rel="noreferrer" href={editorUrl(ctx, f.id)}>New tab</a>}
         <button style={btn} onClick={toggleVersions} aria-expanded={panel === "versions"}>Versions</button>
-        {f.mimetype !== "application/pdf" && <button style={btn} onClick={pdf} disabled={busy}>PDF</button>}
+        {!drawing && f.mimetype !== "application/pdf" && <button style={btn} onClick={pdf} disabled={busy}>PDF</button>}
         <button style={btn} onClick={() => show("share")} aria-expanded={panel === "share"}>Share</button>
         <button style={btn} onClick={() => show("ask")} aria-expanded={panel === "ask"}>Ask an agent</button>
-        <a style={btn} href={f.odoo_url} target="_blank" rel="noreferrer">Odoo</a>
+        {!drawing && <a style={btn} href={f.odoo_url} target="_blank" rel="noreferrer">Odoo</a>}
       </div>
       {note && <p style={{ ...muted, margin: "4px 0 0" }}>{note}</p>}
       {errorLine}
