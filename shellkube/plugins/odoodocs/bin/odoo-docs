@@ -99,6 +99,8 @@ def main():
     print(json.dumps(data, indent=1))
     if data.get("status") in ("LOCKED", "CONFLICT"):
         sys.exit(3)
+    if data.get("status") == "INVALID":
+        sys.exit(1)
 
 
 main()

@@ -30,6 +30,7 @@ Rules:
   that the file was locked, set the task to `blocked` and end your run. You are woken on the same task when the file is free.
 - Diagrams (`.excalidraw`): `read` also prints `text` (the labels and arrows as "A -> B"); read that, not the JSON.
   To make a new diagram, write Mermaid and use `create --mermaid`; it is drawn when a person opens it. To change a
-  diagram, `write` Excalidraw scene JSON with the same `--base` rules.
+  diagram, `write` Excalidraw scene JSON with the same `--base` rules. **INVALID** (exit 1) means the editor could not
+  open your scene; `reason` says what to fix (e.g. arrows and lines need `points`). Nothing was saved.
 - Round-trip only simple files (plain text, .csv, .md, small .docx/.xlsx you generate yourself). Do not rewrite complex
   documents made by people (tracked changes, comments, complex layout): comment instead.
