@@ -74,6 +74,7 @@ function InteractiveComposerQuestions() {
             onSubmit={(next) => { setResponse(next); setOpen(false); }}
           />,
           onDismiss: () => setOpen(false),
+          onHide: () => setOpen(false),
           onSkip: () => setOpen(false),
         } : null}
       />

@@ -57,10 +57,28 @@ const mobileDetailedQuestionInteraction = {
   },
 };
 
+const longApplyConfirmationInteraction = {
+  ...genericPendingRequestConfirmationInteraction,
+  id: "interaction-long-apply",
+  title: "Apply remark buttons + reconciliation links on smiv19?",
+  payload: {
+    ...genericPendingRequestConfirmationInteraction.payload,
+    prompt: [
+      "Add the Month close remarks list and the Remark column / 'closed' status on the 3 Month close dashboards.",
+      ...Array.from({ length: 6 }, (_, index) => `Step ${index + 1}: update dashboard ${index + 1} so each flagged line gets a Remark button, a link to its reconciliation and a 'closed' status that records who closed it and when. Bookkeepers write, Dashboard admins read.`),
+      "Gains access: only to the remarks list (Bookkeepers write, Dashboard admins read); no accounting data.",
+      "Undo: archive [Ironhide] menu Month close remarks and rebuild the dashboards.",
+    ].join("\n\n"),
+    acceptLabel: "Apply now",
+    rejectLabel: "Not yet",
+  },
+} satisfies IssueThreadInteraction;
+
 function InteractionAboveComposer({ interaction, mobile = false }: { interaction: IssueThreadInteraction; mobile?: boolean }) {
   const [workMode, setWorkMode] = useState<IssueWorkMode>("standard");
   const [open, setOpen] = useState(true);
   const [pending, setPending] = useState(true);
+  const [hidden, setHidden] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const resolve = () => { setPending(false); setOpen(false); };
   const content = (
@@ -93,14 +111,15 @@ function InteractionAboveComposer({ interaction, mobile = false }: { interaction
         label: interaction.title ?? "Pending input",
         pendingCount: 1,
         content,
-        onDismiss: () => setOpen(false),
+        onDismiss: () => { setOpen(false); setHidden(false); },
+        onHide: () => { setOpen(false); setHidden(true); },
         onSkip: resolve,
         inlineSkip: interaction.kind === "ask_user_questions" || interaction.kind === "request_item_verdicts",
         hideSkip: interaction.kind !== "ask_user_questions" && interaction.kind !== "request_item_verdicts",
         hideLabel: interaction.kind === "request_confirmation" && Boolean(interaction.payload.toolAction),
       } : null}
-      pendingTakeover={pending && interaction.kind !== "ask_user_questions"
-        ? { count: 1, label: "1 pending input", onOpen: () => setOpen(true) }
+      pendingTakeover={pending && (hidden || interaction.kind !== "ask_user_questions")
+        ? { count: 1, label: interaction.title ?? "Pending input", onOpen: () => setOpen(true) }
         : null}
     />
   );
@@ -149,7 +168,7 @@ const meta = {
   parameters: {
     layout: "fullscreen",
     options: { showPanel: false },
-    docs: { description: { component: "The production task interaction card and composer shown together. Dismissed questions do not contribute a composer pending indicator; other unresolved inputs retain one. Skip or a decision resolves the card. This local composition does not model persisted dismissal or the thread's history entry; use Task Chat Unanswered Questions for that fixture journey." } },
+    docs: { description: { component: "The production task interaction card and composer shown together. Dismissed questions do not contribute a composer pending indicator; other unresolved inputs retain one, titled with the input. Hide collapses any input, including a question, to that reopen bar. Skip or a decision resolves the card. This local composition does not model persisted dismissal or the thread's history entry; use Task Chat Unanswered Questions for that fixture journey." } },
     paperclip: {
       "capabilities": [
         "questions-and-approvals/questions",
@@ -159,7 +178,7 @@ const meta = {
       "status": "current",
       "implementation": "production",
       "boundary": "fixtures",
-      "notes": "Corrected local dismissal/send harness: questions leave no pending badge; confirmations retain reopen. Production cards/composer; persisted dismissal is covered separately by unanswered-question fixtures."
+      "notes": "Local dismissal/send harness: dismissed questions leave no pending badge; confirmations and hidden inputs keep a titled reopen bar. Production cards/composer; persisted dismissal is covered separately by unanswered-question fixtures."
     },
   },
   args: { interaction: pendingAskUserQuestionsInteraction, mobile: false },
@@ -177,7 +196,7 @@ export const AskUserQuestionsAndSend: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Send" }));
     await expect(canvas.getByText("I can keep working while I decide.")).toBeVisible();
     await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: /1 pending input/i })).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
   },
 };
 export const DismissQuestionWithoutPendingBadge: Story = {
@@ -185,8 +204,16 @@ export const DismissQuestionWithoutPendingBadge: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /^Dismiss / }));
     await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: /1 pending input/i })).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
     await expect(canvas.getByRole("textbox", { name: "editable markdown" })).toBeVisible();
+  },
+};
+export const HideQuestionKeepsReopenBar: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /^Hide / }));
+    await userEvent.click(canvas.getByTestId("task-chat-pending-input-indicator"));
+    await expect(canvas.getByTestId("task-chat-composer-takeover")).toBeVisible();
   },
 };
 export const DismissConfirmationKeepsPendingBadge: Story = {
@@ -194,11 +221,11 @@ export const DismissConfirmationKeepsPendingBadge: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /^Dismiss / }));
-    await expect(canvas.getByRole("button", { name: /1 pending input/i })).toBeVisible();
-    await userEvent.click(canvas.getByRole("button", { name: /1 pending input/i }));
+    await userEvent.click(canvas.getByTestId("task-chat-pending-input-indicator"));
     await expect(canvas.getByTestId("task-chat-composer-takeover")).toBeVisible();
   },
 };
+export const LongApproval: Story = { args: { interaction: longApplyConfirmationInteraction } };
 export const PlanReview: Story = { args: { interaction: pendingRequestConfirmationInteraction } };
 export const SimpleConfirmation: Story = { args: { interaction: genericPendingRequestConfirmationInteraction } };
 export const CheckboxConfirmation: Story = { args: { interaction: pendingRequestCheckboxConfirmationInteraction } };
@@ -245,6 +272,7 @@ function RuntimeQuestionAboveComposer() {
           pendingCount: 1,
           content: <TaskChatProtocolCard item={runtimeRequest} presentation="takeover" onRuntimeRequestDecision={async () => setOpen(false)} />,
           onDismiss: () => setOpen(false),
+          onHide: () => setOpen(false),
           onSkip: () => setOpen(false),
           inlineSkip: true,
         } : null}
@@ -284,6 +312,10 @@ export const MobileDetailedQuestionsWithBottomBar: Story = {
 };
 export const MobileConfirmationWithBottomBar: Story = {
   args: { interaction: genericPendingRequestConfirmationInteraction, mobile: true },
+  globals: { viewport: { value: "mobile1", isRotated: false } },
+};
+export const MobileLongApproval: Story = {
+  args: { interaction: longApplyConfirmationInteraction, mobile: true },
   globals: { viewport: { value: "mobile1", isRotated: false } },
 };
 export const MobileToolReviewWithBottomBar: Story = {

@@ -1954,7 +1954,7 @@ describe("TaskChatComposer", () => {
         onAdd={vi.fn()} workMode="standard"
         pause={{ scope: "subtree" }}
         queuedEdit={{ commentId: "queued", body: "Queued draft" }}
-        takeover={{ id: "question", label: "Pending input", pendingCount: 1, content: <button>Answer question</button>, onDismiss: vi.fn(), onSkip }}
+        takeover={{ id: "question", label: "Pending input", pendingCount: 1, content: <button>Answer question</button>, onDismiss: vi.fn(), onHide: vi.fn(), onSkip }}
       />));
       expect(container.textContent).toContain("Subtree is paused.");
       expect(container.textContent).not.toContain("Answer question");
@@ -2080,6 +2080,7 @@ describe("TaskChatComposer", () => {
             pendingCount: 1,
             content: <p>Which environment?</p>,
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2103,6 +2104,7 @@ describe("TaskChatComposer", () => {
             pendingCount: 1,
             content: <p>Which environment?</p>,
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2122,6 +2124,7 @@ describe("TaskChatComposer", () => {
             pendingCount: 2,
             content: <p>Which environment should receive this?</p>,
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip,
             onShowNext: vi.fn(),
           },
@@ -2165,6 +2168,7 @@ describe("TaskChatComposer", () => {
                     pendingCount: 1,
                     content: <p>Do you accept this plan?</p>,
                     onDismiss: () => setOpen(false),
+                    onHide: vi.fn(),
                     onSkip: () => setOpen(false),
                   }
                 : null
@@ -2219,6 +2223,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
             onShowNext: vi.fn(),
           },
@@ -2276,6 +2281,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2355,6 +2361,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2626,6 +2633,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2682,6 +2690,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2739,6 +2748,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss,
+            onHide: vi.fn(),
             onSkip,
           },
       });
@@ -2752,6 +2762,54 @@ describe("TaskChatComposer", () => {
       expect(onDismiss).toHaveBeenCalledTimes(1);
       expect(onSkip).not.toHaveBeenCalled();
       expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])("bounds long content in a scroll body with title, Hide and answer buttons outside it (mobile=%s)", (mobile) => {
+      const onDismiss = vi.fn();
+      const onHide = vi.fn();
+      renderComposer({
+        onAdd: vi.fn(),
+        workMode: "standard",
+        mobile,
+        takeover: {
+          id: "long-question",
+          label: "Apply on smiv19?",
+          pendingCount: 1,
+          inlineSkip: true,
+          content: (
+            <QuestionForm
+              id="long-question"
+              questionSet={{
+                schema: "paperclip.question_set.v1",
+                questions: [{
+                  id: "apply",
+                  prompt: "Apply this change? ".repeat(200),
+                  required: true,
+                  answerMode: "single_select",
+                  options: [{ id: "yes", label: "Yes" }],
+                }],
+              }}
+              onSubmit={vi.fn()}
+            />
+          ),
+          onDismiss,
+          onHide,
+          onSkip: vi.fn(),
+        },
+      });
+      const section = container.querySelector('[data-testid="task-chat-composer-takeover"]');
+      const body = container.querySelector('[data-testid="task-chat-composer-takeover-body"]');
+      expect(section?.className).toContain("max-h-(--tc-interaction-card-max-h)");
+      expect(section?.className).not.toContain("overflow");
+      expect(body?.className).toContain("overflow-y-auto");
+      expect(body?.contains(container.querySelector('[data-testid="task-chat-composer-takeover-header"]'))).toBe(false);
+      const submit = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+        .find((button) => button.textContent?.trim() === "Submit answers");
+      expect(submit?.parentElement?.className).toContain("sticky bottom-0");
+
+      flushSync(() => container.querySelector<HTMLButtonElement>('[aria-label="Hide Apply on smiv19?"]')?.click());
+      expect(onHide).toHaveBeenCalledTimes(1);
+      expect(onDismiss).not.toHaveBeenCalled();
     });
 
     it("places Skip beside Submit answers for structured questions", () => {
@@ -2785,6 +2843,7 @@ describe("TaskChatComposer", () => {
               />
             ),
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
           },
       });
@@ -2807,8 +2866,6 @@ describe("TaskChatComposer", () => {
       const takeoverBody = container.querySelector(
         '[data-testid="task-chat-composer-takeover-body"]',
       );
-      expect(takeoverBody?.className).not.toContain("max-h-");
-      expect(takeoverBody?.className).not.toContain("overflow-y-auto");
       expect(takeoverBody?.className).not.toContain("pr-8");
 
       const staging = buttons.find((button) =>
@@ -2842,6 +2899,7 @@ describe("TaskChatComposer", () => {
             pendingCount: 1,
             content: <p>Do you accept this plan?</p>,
             onDismiss: vi.fn(),
+            onHide: vi.fn(),
             onSkip: vi.fn(),
             hideSkip: true,
           },
@@ -2872,6 +2930,7 @@ describe("TaskChatComposer", () => {
             pendingCount: 1,
             content: <p>Which release should ship?</p>,
             onDismiss,
+            onHide: vi.fn(),
             onSkip,
           },
       });

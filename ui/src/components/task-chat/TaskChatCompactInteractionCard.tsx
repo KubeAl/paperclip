@@ -190,7 +190,8 @@ function InteractionShell({
   return (
     <article
       className={cn(
-        "overflow-hidden",
+        // clip (not hidden) so sticky action rows stick to the takeover's scroller
+        "overflow-clip",
         presentation === "timeline" &&
           "rounded-md border border-border bg-card/60",
       )}
@@ -255,8 +256,9 @@ function ActionRow({
   children: ReactNode;
   hint?: string | null;
 }) {
+  const inTakeover = useTaskChatComposerTakeoverActions() !== null;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
+    <div className={cn("mt-3 flex flex-wrap items-center gap-2", inTakeover && "sticky bottom-0 z-10 bg-card py-2")}>
       {hint ? (
         <span className="mr-auto text-xs text-muted-foreground">{hint}</span>
       ) : (

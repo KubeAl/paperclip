@@ -3009,7 +3009,8 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     expect(takeover()?.textContent).toContain("2 pending");
     expect(takeover()?.textContent).not.toContain("3 pending");
     await dismiss();
-    expect(pendingIndicator()?.textContent).toContain("2 pending inputs");
+    expect(pendingIndicator()?.textContent).toContain("Approve the note?");
+    expect(pendingIndicator()?.textContent).toContain("2 pending");
     await act(async () => pendingIndicator()!.click());
     expect(takeover()?.textContent).toContain("Approve the note?");
   });
@@ -3062,6 +3063,26 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     expect(pendingIndicator()).toBeNull();
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
     expect(takeover()?.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Yes");
+  });
+
+  it("hides a question to a titled bar that reopens it, unlike dismiss", async () => {
+    render(<TaskChatThread {...props} comments={[]} interactions={[old]} />);
+    await click("Yes");
+    await act(async () => takeover()!.querySelector<HTMLButtonElement>('[aria-label^="Hide "]')!.click());
+    expect(takeover()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain(old.title!);
+    await act(async () => pendingIndicator()!.click());
+    expect(takeover()?.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Yes");
+  });
+
+  it("keeps a dismissed approval findable by its title", async () => {
+    const approval = { ...planReviewInteraction(), id: "approval", title: "Apply on smiv19?", payload: { version: 1, prompt: "Apply it?" } } as IssueThreadInteraction;
+    render(<TaskChatThread {...props} comments={[]} interactions={[approval]} />);
+    await dismiss();
+    expect(takeover()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("Apply on smiv19?");
+    await act(async () => pendingIndicator()!.click());
+    expect(takeover()?.textContent).toContain("Apply it?");
   });
 
   it("shows a newly asked question after dismissing an older one", async () => {

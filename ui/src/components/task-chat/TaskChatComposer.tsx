@@ -81,6 +81,8 @@ export interface TaskChatComposerTakeover {
   content: ReactNode;
   /** Hides the takeover without resolving it; the pending indicator can reopen it. */
   onDismiss: () => void;
+  /** Collapses the takeover to the pending indicator, without dismissing it. */
+  onHide: () => void;
   onSkip: () => Promise<void> | void;
   onShowNext?: () => void;
   /** Places Skip inside a structured question form's action row. */
@@ -1193,15 +1195,14 @@ export function TaskChatComposer({
       {takeoverVisible && takeover ? (
         <section
           className={cn(
-            "relative rounded-xl border border-border bg-card p-(--sz-18px) shadow-sm",
-            mobile ? "overflow-visible" : "max-h-(--tc-interaction-card-max-h) overflow-y-auto scrollbar-auto-hide",
+            "relative flex max-h-(--tc-interaction-card-max-h) flex-col rounded-xl border border-border bg-card p-(--sz-18px) shadow-sm",
           )}
           aria-label={takeover.label}
           data-testid="task-chat-composer-takeover"
         >
           <div
             className={cn(
-              "flex min-w-0 items-center gap-2",
+              "flex min-w-0 shrink-0 items-center gap-2",
               takeover.hideLabel && takeover.pendingCount === 1
                 ? "absolute right-0 top-0 z-10"
                 : "mb-3",
@@ -1228,12 +1229,16 @@ export function TaskChatComposer({
               ) : null}
               <div ref={setTakeoverControlsSlot} className="flex shrink-0 items-center" data-testid="task-chat-composer-takeover-controls-slot" />
               <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground hover:text-foreground"
+                aria-label={`Hide ${takeover.label}`} title="Hide" disabled={takeoverBusy} onClick={takeover.onHide}>
+                <ChevronDown aria-hidden />
+              </Button>
+              <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground hover:text-foreground"
                 aria-label={`Dismiss ${takeover.label}`} disabled={takeoverBusy} onClick={takeover.onDismiss}>
                 <X aria-hidden />
               </Button>
             </div>
           </div>
-          <div className={takeover.hideLabel && takeover.pendingCount === 1 ? "pr-8" : "pr-1"}
+          <div className={cn("min-h-0 overflow-y-auto scrollbar-auto-hide", takeover.hideLabel && takeover.pendingCount === 1 ? "pr-16" : "pr-1")}
             data-testid="task-chat-composer-takeover-body">
             <TaskChatComposerTakeoverActionsContext.Provider
               value={{

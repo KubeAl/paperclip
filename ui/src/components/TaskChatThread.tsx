@@ -2555,7 +2555,8 @@ export function TaskChatThread(props: TaskChatThreadProps) {
         && toMs(input.interaction.createdAt) < toMs(latestUserComment.createdAt))))),
   [pendingComposerInputs, dismissedQuestionIds, latestUserComment]);
   const currentPendingKeys = useMemo(() => new Set(currentPendingInputs.map(input => input.key)), [currentPendingInputs]);
-  const [takeoverMode, setTakeoverMode] = useState<"open" | "normal">("open");
+  // hidden = collapsed by Hide: unlike a dismissal, the pending bar keeps even a question reopenable.
+  const [takeoverMode, setTakeoverMode] = useState<"open" | "normal" | "hidden">("open");
   const [selectedPendingKey, setSelectedPendingKey] = useState<string | null>(
     null,
   );
@@ -2586,11 +2587,16 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     ? `paperclip:task-input:${issueId ?? "unknown"}:${selectedPendingInput.key}`
     : undefined;
   const openPendingTakeover = useCallback(() => {
-    if (!pendingReminderInputs.some(input => input.key === selectedPendingInput?.key)) {
+    if (takeoverMode !== "hidden" && !pendingReminderInputs.some(input => input.key === selectedPendingInput?.key)) {
       setSelectedPendingKey(pendingReminderInputs[0]?.key ?? null);
     }
     setTakeoverMode("open");
-  }, [pendingReminderInputs, selectedPendingInput]);
+  }, [pendingReminderInputs, selectedPendingInput, takeoverMode]);
+  const pendingBarInput = takeoverMode === "hidden" && selectedPendingInput
+    ? selectedPendingInput
+    : pendingReminderInputs.find(input => input.key === selectedPendingInput?.key) ?? pendingReminderInputs[0];
+  const pendingBarCount = pendingReminderInputs.length
+    + (pendingBarInput && !pendingReminderInputs.includes(pendingBarInput) ? 1 : 0);
   const showNextPendingInput = useCallback(() => {
     if (pendingReminderInputs.length < 2) return;
     const currentIndex = pendingReminderInputs.findIndex(
@@ -2847,6 +2853,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
             }
             setTakeoverMode("normal");
           },
+          onHide: () => setTakeoverMode("hidden"),
           onSkip: () => skipPendingInput(selectedPendingInput),
           onShowNext: showNextPendingInput,
           inlineSkip:
@@ -3289,10 +3296,10 @@ export function TaskChatThread(props: TaskChatThreadProps) {
                       onRunnerGoalCommand={runnerGoal.executeComposerCommand}
                       onRunnerGoalReassign={reassignForRunnerGoal}
                       pendingTakeover={
-                        pendingReminderInputs.length > 0
+                        pendingBarInput
                           ? {
-                              count: pendingReminderInputs.length,
-                              label: `${pendingReminderInputs.length} pending input${pendingReminderInputs.length === 1 ? "" : "s"}`,
+                              count: pendingBarCount,
+                              label: pendingBarInput.label,
                               onOpen: openPendingTakeover,
                             }
                           : null

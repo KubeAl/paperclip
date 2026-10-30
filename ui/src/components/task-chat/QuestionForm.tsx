@@ -680,7 +680,7 @@ function QuestionFormForRequest({
           </div>
         ) : null}
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+      <div className={cn("mt-3 flex flex-wrap items-center justify-end gap-2", takeoverActions && "sticky bottom-0 z-10 bg-card py-2")}>
         {cancelAction ? (
           <Button
             type="button"

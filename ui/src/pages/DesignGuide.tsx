@@ -478,6 +478,7 @@ function TaskPendingInputExample() {
           </div>
         </div>,
         onDismiss: () => setOpen(false),
+        onHide: () => setOpen(false),
         onSkip: () => setPending(false),
       } : null}
       pendingTakeover={pending ? { count: 1, label: "Question", onOpen: () => setOpen(true) } : null}
