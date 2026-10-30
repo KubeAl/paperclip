@@ -2536,11 +2536,6 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     }
     return result;
   }, [interactions, pendingRuntimeRequest]);
-  // Questions already have an answerable history card, including
-  // when the user dismisses a fresh form without sending another message.
-  const pendingReminderInputs = useMemo(() => pendingComposerInputs.filter(input =>
-    !(input.kind === "durable" && input.interaction.kind === "ask_user_questions")),
-  [pendingComposerInputs]);
   const { dismissedQuestionIds, dismissQuestion } = useDismissedTaskQuestions(issueId, currentUserId);
   const latestUserComment = useMemo(() => comments
     .filter(comment => !comment.deletedAt && comment.authorUserId && !comment.authorAgentId && !comment.createdByRunId)
@@ -2555,8 +2550,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
         && toMs(input.interaction.createdAt) < toMs(latestUserComment.createdAt))))),
   [pendingComposerInputs, dismissedQuestionIds, latestUserComment]);
   const currentPendingKeys = useMemo(() => new Set(currentPendingInputs.map(input => input.key)), [currentPendingInputs]);
-  // hidden = collapsed by Hide: unlike a dismissal, the pending bar keeps even a question reopenable.
-  const [takeoverMode, setTakeoverMode] = useState<"open" | "normal" | "hidden">("open");
+  const [takeoverMode, setTakeoverMode] = useState<"open" | "normal">("open");
   const [selectedPendingKey, setSelectedPendingKey] = useState<string | null>(
     null,
   );
@@ -2587,26 +2581,21 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     ? `paperclip:task-input:${issueId ?? "unknown"}:${selectedPendingInput.key}`
     : undefined;
   const openPendingTakeover = useCallback(() => {
-    if (takeoverMode !== "hidden" && !pendingReminderInputs.some(input => input.key === selectedPendingInput?.key)) {
-      setSelectedPendingKey(pendingReminderInputs[0]?.key ?? null);
+    if (!pendingComposerInputs.some(input => input.key === selectedPendingInput?.key)) {
+      setSelectedPendingKey(pendingComposerInputs[0]?.key ?? null);
     }
     setTakeoverMode("open");
-  }, [pendingReminderInputs, selectedPendingInput, takeoverMode]);
-  const pendingBarInput = takeoverMode === "hidden" && selectedPendingInput
-    ? selectedPendingInput
-    : pendingReminderInputs.find(input => input.key === selectedPendingInput?.key) ?? pendingReminderInputs[0];
-  const pendingBarCount = pendingReminderInputs.length
-    + (pendingBarInput && !pendingReminderInputs.includes(pendingBarInput) ? 1 : 0);
+  }, [pendingComposerInputs, selectedPendingInput]);
   const showNextPendingInput = useCallback(() => {
-    if (pendingReminderInputs.length < 2) return;
-    const currentIndex = pendingReminderInputs.findIndex(
+    if (pendingComposerInputs.length < 2) return;
+    const currentIndex = pendingComposerInputs.findIndex(
       (input) => input.key === selectedPendingInput?.key,
     );
     setSelectedPendingKey(
-      pendingReminderInputs[(currentIndex + 1) % pendingReminderInputs.length]
+      pendingComposerInputs[(currentIndex + 1) % pendingComposerInputs.length]
         ?.key ?? null,
     );
-  }, [pendingReminderInputs, selectedPendingInput?.key]);
+  }, [pendingComposerInputs, selectedPendingInput?.key]);
   const skipPendingInput = useCallback(
     async (input: PendingComposerInput) => {
       if (input.kind === "runtime") {
@@ -2844,7 +2833,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
             selectedPendingInput.kind === "durable" &&
             selectedPendingInput.interaction.kind === "request_confirmation" &&
             Boolean(selectedPendingInput.interaction.payload.toolAction),
-          pendingCount: Math.max(1, pendingReminderInputs.length),
+          pendingCount: Math.max(1, pendingComposerInputs.length),
           content: takeoverContent,
           onDismiss: () => {
             if (selectedPendingInput.kind === "durable" && selectedPendingInput.interaction.kind === "ask_user_questions") {
@@ -2853,7 +2842,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
             }
             setTakeoverMode("normal");
           },
-          onHide: () => setTakeoverMode("hidden"),
+          onHide: () => setTakeoverMode("normal"),
           onSkip: () => skipPendingInput(selectedPendingInput),
           onShowNext: showNextPendingInput,
           inlineSkip:
@@ -3296,10 +3285,10 @@ export function TaskChatThread(props: TaskChatThreadProps) {
                       onRunnerGoalCommand={runnerGoal.executeComposerCommand}
                       onRunnerGoalReassign={reassignForRunnerGoal}
                       pendingTakeover={
-                        pendingBarInput
+                        pendingComposerInputs.length > 0
                           ? {
-                              count: pendingBarCount,
-                              label: pendingBarInput.label,
+                              count: pendingComposerInputs.length,
+                              label: (selectedPendingInput ?? pendingComposerInputs[0]).label,
                               onOpen: openPendingTakeover,
                             }
                           : null

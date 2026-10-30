@@ -78,7 +78,6 @@ function InteractionAboveComposer({ interaction, mobile = false }: { interaction
   const [workMode, setWorkMode] = useState<IssueWorkMode>("standard");
   const [open, setOpen] = useState(true);
   const [pending, setPending] = useState(true);
-  const [hidden, setHidden] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const resolve = () => { setPending(false); setOpen(false); };
   const content = (
@@ -111,14 +110,14 @@ function InteractionAboveComposer({ interaction, mobile = false }: { interaction
         label: interaction.title ?? "Pending input",
         pendingCount: 1,
         content,
-        onDismiss: () => { setOpen(false); setHidden(false); },
-        onHide: () => { setOpen(false); setHidden(true); },
+        onDismiss: () => setOpen(false),
+        onHide: () => setOpen(false),
         onSkip: resolve,
         inlineSkip: interaction.kind === "ask_user_questions" || interaction.kind === "request_item_verdicts",
         hideSkip: interaction.kind !== "ask_user_questions" && interaction.kind !== "request_item_verdicts",
         hideLabel: interaction.kind === "request_confirmation" && Boolean(interaction.payload.toolAction),
       } : null}
-      pendingTakeover={pending && (hidden || interaction.kind !== "ask_user_questions")
+      pendingTakeover={pending
         ? { count: 1, label: interaction.title ?? "Pending input", onOpen: () => setOpen(true) }
         : null}
     />
@@ -168,7 +167,7 @@ const meta = {
   parameters: {
     layout: "fullscreen",
     options: { showPanel: false },
-    docs: { description: { component: "The production task interaction card and composer shown together. Dismissed questions do not contribute a composer pending indicator; other unresolved inputs retain one, titled with the input. Hide collapses any input, including a question, to that reopen bar. Skip or a decision resolves the card. This local composition does not model persisted dismissal or the thread's history entry; use Task Chat Unanswered Questions for that fixture journey." } },
+    docs: { description: { component: "The production task interaction card and composer shown together. Hide or dismiss collapses any unresolved input, questions included, to a composer pending bar titled with the input; one click reopens it. Skip or a decision resolves the card. This local composition does not model persisted dismissal or the thread's history entry; use Task Chat Unanswered Questions for that fixture journey." } },
     paperclip: {
       "capabilities": [
         "questions-and-approvals/questions",
@@ -178,7 +177,7 @@ const meta = {
       "status": "current",
       "implementation": "production",
       "boundary": "fixtures",
-      "notes": "Local dismissal/send harness: dismissed questions leave no pending badge; confirmations and hidden inputs keep a titled reopen bar. Production cards/composer; persisted dismissal is covered separately by unanswered-question fixtures."
+      "notes": "Local dismissal/send harness: hidden or dismissed inputs keep a titled reopen bar. Production cards/composer; persisted dismissal is covered separately by unanswered-question fixtures."
     },
   },
   args: { interaction: pendingAskUserQuestionsInteraction, mobile: false },
@@ -199,12 +198,12 @@ export const AskUserQuestionsAndSend: Story = {
     await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
   },
 };
-export const DismissQuestionWithoutPendingBadge: Story = {
+export const DismissQuestionKeepsReopenBar: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /^Dismiss / }));
     await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
-    await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
+    await expect(canvas.getByTestId("task-chat-pending-input-indicator")).toHaveTextContent(pendingAskUserQuestionsInteraction.title!);
     await expect(canvas.getByRole("textbox", { name: "editable markdown" })).toBeVisible();
   },
 };

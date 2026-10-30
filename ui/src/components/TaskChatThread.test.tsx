@@ -2952,7 +2952,7 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
   it("leaves a compact, reopenable question on reload after moving on", async () => {
     render(<TaskChatThread {...props} comments={movedOn} interactions={[old]} />);
     expect(takeover()).toBeNull();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("Which color?");
     const row = container.querySelector<HTMLButtonElement>('[data-testid="task-chat-unanswered-question"]');
     expect(row?.textContent).toContain("Which color?");
     await act(async () => row!.click());
@@ -2967,50 +2967,46 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     expect(takeover()).not.toBeNull();
     await act(async () => render(<TaskChatThread {...props} comments={movedOn} interactions={[old]} />));
     expect(takeover()).toBeNull();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("Which color?");
     expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).not.toBeNull();
   });
 
-  it.each(["Cancel", "dismiss"])("leaves only the history card after %s on a fresh question", async action => {
+  it.each(["Cancel", "dismiss"])("keeps a titled bar and the history card after %s on a fresh question", async action => {
     render(<TaskChatThread {...props} comments={[]} interactions={[old]} />);
     await click("Yes");
     if (action === "Cancel") await click("Cancel");
     else await dismiss();
     expect(takeover()).toBeNull();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("Which color?");
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
     expect(takeover()?.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Yes");
   });
 
-  it("keeps multiple historical questions out of the composer after reopening and dismissing one", async () => {
+  it("keeps multiple historical questions on the bar after reopening and dismissing one", async () => {
     const anotherOld = questionInteraction("another-old", "Which format?", "2026-08-15T12:00:02Z");
     render(<TaskChatThread {...props} comments={movedOn} interactions={[old, anotherOld]} />);
     expect(container.querySelectorAll('[data-testid="task-chat-unanswered-question"]')).toHaveLength(2);
-    expect(pendingIndicator()).toBeNull();
+    expect(takeover()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("2 pending");
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
     expect(takeover()?.textContent).toContain("Which color?");
-    expect(takeover()?.textContent).not.toContain("2 pending");
     await dismiss();
     expect(takeover()).toBeNull();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("2 pending");
   });
 
-  it("counts and cycles approvals without including fresh or historical question cards", async () => {
+  it("counts and cycles every pending input, questions included", async () => {
     const approval = { ...planReviewInteraction(), id: "approval", title: "Approve the outline?", payload: { version: 1, prompt: "Approve the outline?" } } as IssueThreadInteraction;
     const nextApproval = { ...approval, id: "next-approval", title: "Approve the note?", createdAt: new Date("2026-08-23T10:02:00Z"), payload: { version: 1, prompt: "Approve the note?" } } as IssueThreadInteraction;
     render(<TaskChatThread {...props} comments={movedOn} interactions={[old, newer, approval, nextApproval]} />);
     expect(takeover()?.textContent).toContain("Approve the note?");
-    await click("2 pending");
-    expect(takeover()?.textContent).toContain("Approve the outline?");
-    await click("2 pending");
-    expect(takeover()?.textContent).toContain("Approve the note?");
-    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
-    expect(takeover()?.textContent).toContain("Which color?");
-    expect(takeover()?.textContent).toContain("2 pending");
-    expect(takeover()?.textContent).not.toContain("3 pending");
+    for (const title of ["Approve the outline?", "Which tone?", "Which color?", "Approve the note?"]) {
+      await click("4 pending");
+      expect(takeover()?.textContent).toContain(title);
+    }
     await dismiss();
     expect(pendingIndicator()?.textContent).toContain("Approve the note?");
-    expect(pendingIndicator()?.textContent).toContain("2 pending");
+    expect(pendingIndicator()?.textContent).toContain("4 pending");
     await act(async () => pendingIndicator()!.click());
     expect(takeover()?.textContent).toContain("Approve the note?");
   });
@@ -3022,11 +3018,11 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     const oldRow = container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]');
     await act(async () => oldRow!.click());
     expect(takeover()?.textContent).toContain("Which color?");
-    expect(takeover()?.textContent).not.toContain("2 pending");
     render(<TaskChatThread {...props} comments={[...movedOn]} interactions={[nativeOld, newer]} />);
     expect(takeover()?.textContent).toContain("Which color?");
     await dismiss();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("Which tone?");
+    expect(pendingIndicator()?.textContent).toContain("2 pending");
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which tone?"]')!.click());
     expect(takeover()?.textContent).toContain("Which tone?");
   });
@@ -3042,7 +3038,7 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     expect(onAdd).toHaveBeenCalledTimes(1);
     if (success) {
       expect(takeover()).toBeNull();
-      expect(pendingIndicator()).toBeNull();
+      expect(pendingIndicator()?.textContent).toContain("Which color?");
       await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="task-chat-unanswered-question"]')!.click());
     }
     expect(takeover()).not.toBeNull();
@@ -3060,7 +3056,7 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     root = createRoot(container);
     show();
     expect(takeover()).toBeNull();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("Which color?");
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
     expect(takeover()?.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Yes");
   });
@@ -3103,7 +3099,7 @@ describe.each([true, false])("Unanswered question history (conversationMode=%s)"
     root = createRoot(container);
     render(<TaskChatThread {...props} comments={[]} interactions={[old, newer]} />);
     expect(takeover()).toBeNull();
-    expect(pendingIndicator()).toBeNull();
+    expect(pendingIndicator()?.textContent).toContain("2 pending");
     expect(container.querySelectorAll('[data-testid="task-chat-unanswered-question"]')).toHaveLength(2);
   });
 
