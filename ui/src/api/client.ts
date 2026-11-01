@@ -1,6 +1,7 @@
 import { getPageVisibility, getVisibilityHeaderValue } from "@/lib/page-visibility";
 import { tenantSessionRecovery } from "@/lib/tenant-session-recovery";
 import { readApiJson } from "./response";
+import { offerAllowedAgent, type AgentRestriction } from "./agent-restriction";
 
 const BASE = "/api";
 
@@ -60,6 +61,11 @@ export async function requestResponse(path: string, init?: RequestInit): Promise
     const errorBody = await readApiJson(res);
     const recovery = tenantSessionRecovery.recoverIfNeeded(res.status, errorBody);
     if (recovery) return recovery;
+    const restriction = (errorBody as { code?: string; details?: { agentRestriction?: AgentRestriction } } | null);
+    if (res.status === 403 && restriction?.code === "agent_restricted" && restriction.details?.agentRestriction) {
+      const redone = await offerAllowedAgent(requestResponse, path, init, restriction.details.agentRestriction);
+      if (redone) return redone;
+    }
     throw new ApiError(
       (errorBody as { error?: string } | null)?.error ?? `Request failed: ${res.status}`,
       res.status,

@@ -95,6 +95,7 @@ import {
   notFound,
 } from "../../errors.js";
 import { logger } from "../../middleware/logger.js";
+import { allowedAgentIds } from "../agent-restriction.js";
 import { publishLiveEvent } from "../live-events.js";
 import { allocateHeartbeatRunEventSeq } from "../heartbeat-run-events.js";
 import {
@@ -2248,6 +2249,14 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
 
     let agent = await getAgent(agentId);
     if (!agent) throw notFound("Agent not found");
+    // [shellkube] agent-scoped principals (agent-restriction.ts) never wake other agents, whatever the route.
+    if ((opts.requestedByActorType === "user" || opts.requestedByActorType === "agent") && opts.requestedByActorId && opts.requestedByActorId !== agent.id) {
+      const allowed = await allowedAgentIds(db, agent.companyId, opts.requestedByActorType, opts.requestedByActorId);
+      if (allowed && !allowed.includes(agent.id)) {
+        logger.warn({ agentId: agent.id, requestedBy: opts.requestedByActorId, reason }, "agent-restricted wake dropped");
+        return null;
+      }
+    }
     // Mentions only annotate comments. Ignore legacy callers before creating
     // a run or deferred request; assignment and review have their own wakes.
     if (reason === "issue_comment_mentioned" || enrichedContextSnapshot.wakeReason === "issue_comment_mentioned") return null;

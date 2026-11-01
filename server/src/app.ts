@@ -61,6 +61,7 @@ import { httpLogger, errorHandler } from "./middleware/index.js";
 import { skillAccessRequestContext } from "./services/skill-access.js";
 import { actorMiddleware } from "./middleware/auth.js";
 import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
+import { agentRestrictionGuard } from "./services/agent-restriction.js";
 import {
   privateHostnameGuard,
   resolvePrivateHostnameAllowSet,
@@ -758,6 +759,7 @@ export async function createApp(
   const agentAvatars = agentAvatarRoutes();
   api.use(agentAvatars.router);
   api.use(boardMutationGuard());
+  api.use(agentRestrictionGuard(db));
   api.use("/health", health);
   api.use(openApiRoutes());
   api.use("/cloud", cloudRoutes());
