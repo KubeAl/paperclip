@@ -3475,7 +3475,9 @@ export function recoveryService(
     const rows = await db
       .select({
         action: issueRecoveryActions,
-        issue: { ...dispositionRepairIssueFields, projectWorkspaceId: issues.projectWorkspaceId },
+        issue: { ...dispositionRepairIssueFields, projectWorkspaceId: issues.projectWorkspaceId,
+          // [shellkube #13944] routine poll finalize needs the execution origin.
+          originKind: issues.originKind, originId: issues.originId, identifier: issues.identifier },
       })
       .from(issueRecoveryActions)
       .innerJoin(

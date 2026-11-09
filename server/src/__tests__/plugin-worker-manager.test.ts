@@ -369,6 +369,7 @@ describe("plugin-worker-manager stderr failure context", () => {
         actorContext: {
           type: "agent",
           userId: null,
+          userEmail: null,
           agentId: "agent-1",
           runId: "run-1",
           companyId: "company-a",
@@ -458,6 +459,7 @@ describe("plugin-worker-manager stderr failure context", () => {
         actorContext: {
           type: "agent",
           userId: null,
+          userEmail: null,
           agentId: "agent-1",
           runId: "run-1",
           companyId: "company-a",
@@ -507,6 +509,7 @@ describe("plugin-worker-manager stderr failure context", () => {
         actorContext: {
           type: "agent",
           userId: null,
+          userEmail: null,
           agentId: "agent-1",
           runId: "run-1",
           companyId: "company-a",
@@ -649,6 +652,7 @@ describe("plugin host company context guards", () => {
           actorContext: {
             type: "agent",
             userId: null,
+            userEmail: null,
             agentId: "agent-1",
             runId: "run-1",
             companyId: "company-a",
