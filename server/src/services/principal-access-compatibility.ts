@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { agents, companyMemberships, principalPermissionGrants } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
 import { grantsForHumanRole, normalizeHumanRole } from "./company-member-roles.js";
+import { allowedAgentIds } from "./agent-restriction.js";
 
 type GrantInput = {
   permissionKey: PermissionKey;
@@ -86,6 +87,8 @@ export async function ensureHumanRoleDefaultGrants(
     grantedByUserId: string | null;
   },
 ): Promise<number> {
+  // [shellkube] Agent-scoped members (tasks:assign scope.agentIds) keep only the grants they were given.
+  if (await allowedAgentIds(db, input.companyId, "user", input.principalId)) return 0;
   const role = normalizeHumanRole(input.membershipRole, "operator");
   return insertMissingPrincipalGrants(db, {
     companyId: input.companyId,

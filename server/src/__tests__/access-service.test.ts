@@ -1038,6 +1038,26 @@ describeEmbeddedPostgres("access service", () => {
     expect(ownerEnvironmentGrants[0]?.grantedByUserId).toBe("custom-author");
   });
 
+  it("does not seed role defaults for agent-scoped members", async () => {
+    const { company } = await createCompanyWithOwner(db);
+    const principalId = `scoped-${randomUUID()}`;
+    await db.insert(companyMemberships).values({
+      companyId: company.id, principalType: "user", principalId, status: "active", membershipRole: "operator",
+    });
+    await db.insert(principalPermissionGrants).values({
+      companyId: company.id, principalType: "user", principalId,
+      permissionKey: "tasks:assign", scope: { agentIds: [randomUUID()] },
+    });
+
+    await backfillPrincipalAccessCompatibility(db);
+
+    const keys = await db
+      .select({ permissionKey: principalPermissionGrants.permissionKey })
+      .from(principalPermissionGrants)
+      .where(eq(principalPermissionGrants.principalId, principalId));
+    expect(keys.map((row) => row.permissionKey)).toEqual(["tasks:assign"]);
+  });
+
   it("backfills non-terminal agents as active company members without reviving pending or terminated agents", async () => {
     const { company } = await createCompanyWithOwner(db);
     const agentRows = await db
