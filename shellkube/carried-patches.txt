@@ -11,6 +11,7 @@
 # 13880, 14320, 11781 OPEN; 13389, 13944, 14390, 13618, 8150 CLOSED unmerged (upstream has no equivalent fix).
 # Dropped earlier: c8b82932a (#14503 merged). Dropped now: entities.list scopeKind/scopeId (upstream #20762).
 # #13389 on upstream's batched renewal: no lease-expiry predicate in renewLegacyControllerLeasesInTransaction + onDeadline grace.
+#   Expiry is still enforced for a lease this process released on purpose (shutdown handoff) and for native admission (requireUnexpired).
 # #13880 needs executionState in wake-queue issueAdmissionFields (modules/wake-queue/adapters/postgres.ts).
 f20d19f6e 13880 heartbeat: re-admit stage handoff blocked by held env lease (issue #13532)
 96fe10f67 14320,11781 pi-local transcript: dedupe, roles, cacheWrite (our own rewrite)
