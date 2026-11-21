@@ -7,6 +7,11 @@
 # 2026-11-09 sync: dropped c8b82932a (#14503 merged upstream as 8153061d71, identical change).
 # 1670105f6 (#13389), 6f4d58e60 (#13944), 0acf998de (#14390), d69a978f6 (#8150): upstream PRs CLOSED unmerged; still needed, kept.
 # #10249 (merged) was removed from the 96fe10f67 line: it only adds stdout compaction; our dedupe/roles fix is still needed.
+# 2026-11-21 (sync onto upstream 1b1861c29d): all lines below re-ported and still needed. PR states:
+# 13880, 14320, 11781 OPEN; 13389, 13944, 14390, 13618, 8150 CLOSED unmerged (upstream has no equivalent fix).
+# Dropped earlier: c8b82932a (#14503 merged). Dropped now: entities.list scopeKind/scopeId (upstream #20762).
+# #13389 on upstream's batched renewal: no lease-expiry predicate in renewLegacyControllerLeasesInTransaction + onDeadline grace.
+# #13880 needs executionState in wake-queue issueAdmissionFields (modules/wake-queue/adapters/postgres.ts).
 f20d19f6e 13880 heartbeat: re-admit stage handoff blocked by held env lease (issue #13532)
 96fe10f67 14320,11781 pi-local transcript: dedupe, roles, cacheWrite (our own rewrite)
 1670105f6 13389 server: preserve legacy leases across host sleep
