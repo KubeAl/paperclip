@@ -48,7 +48,10 @@ export function legacyControllerClaim(runtimeMode: string) {
   };
 }
 
-type RenewalTarget = Pick<Run, "id" | "companyId"> & { stage?: "dispatching" };
+type RenewalTarget = Pick<Run, "id" | "companyId"> & { stage?: "dispatching"; requireUnexpired?: boolean };
+// [shellkube #13389] Runs this process released on purpose (shutdown handoff expires the lease but keeps
+// the boot id). Only these keep upstream's expiry check, so a released lease is never renewed back.
+const releasedRunIds = new Set<string>();
 type RenewalOutcome = "renewed" | "rejected" | "busy";
 
 async function renewLegacyControllerLeasesInTransaction(
@@ -63,6 +66,9 @@ async function renewLegacyControllerLeasesInTransaction(
   // [shellkube #13389] No lease-expiry check: a host suspend can advance PostgreSQL's clock past the
   // lease while this process's renewal timer is paused. The boot id is the ownership fence: recovery's
   // revoke changes it, so an expired lease that nobody claimed can be renewed by the same controller.
+  const released = targets.filter(target => target.requireUnexpired || releasedRunIds.has(target.id)).map(target => sql`${target.id}::uuid`);
+  const notReleased = released.length
+    ? sql`(r.controller_lease_expires_at > clock_timestamp() or r.id not in (${sql.join(released, sql`, `)}))` : sql`true`;
   const rows = await tx.execute<{ id: string; renewed: boolean; examined: boolean }>(sql`
     with requested(id, company_id) as (values ${requested}),
     examined as (
@@ -75,6 +81,7 @@ async function renewLegacyControllerLeasesInTransaction(
       from examined e
       where r.id = e.id and r.runtime_mode = 'legacy' and r.status = 'running'
         and r.controller_boot_id = ${legacyControllerBootId}
+        and ${notReleased}
       returning r.id
     )
     select q.id::text as id, exists (select 1 from renewed n where n.id = q.id) as renewed,
@@ -89,9 +96,11 @@ export async function renewLegacyControllerLease(
   db: Db,
   run: Pick<Run, "id" | "companyId" | "controllerBootId">,
   stage?: "dispatching",
+  // [shellkube #13389] native admission keeps upstream's strict check: an expired lease is not admitted.
+  { requireUnexpired = false } = {},
 ): Promise<boolean> {
   const outcomes = await db.transaction(tx => renewLegacyControllerLeasesInTransaction(tx as unknown as Db,
-    [{ id: run.id, companyId: run.companyId, stage }]));
+    [{ id: run.id, companyId: run.companyId, stage, requireUnexpired }]));
   return outcomes.get(run.id) === "renewed";
 }
 
@@ -193,6 +202,7 @@ export async function handoffLegacyControllerPreparation(db: Db, run: Run, prepa
         eq(heartbeatRuns.status, "running"), eq(heartbeatRuns.controllerBootId, legacyControllerBootId),
         legacyPreparationStage(), sql`${preparationLease} is not null`)).returning({ id: heartbeatRuns.id });
     if (!released) return false;
+    releasedRunIds.add(run.id);
     onHandoff();
     return true;
   });
