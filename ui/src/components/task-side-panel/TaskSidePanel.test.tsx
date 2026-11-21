@@ -30,7 +30,9 @@ class ResizeObserverStub {
 
 vi.mock("@/plugins/slots", () => ({
   PluginSlotMount: ({ context }: { context: { entityId: string } }) => <div data-plugin-viewer>Plugin viewer {context.entityId}</div>,
+  usePluginSlots: () => ({ slots: [] }), // [shellkube] detailTab plugin tabs
 }));
+vi.mock("@/context/PanelContext", () => ({ usePanel: () => ({ setPanelVisible: () => {} }) })); // [shellkube] detailTab plugin tabs
 const pluginPanel = { entityId: "33333333-3333-4333-8333-333333333333", runId: "run-1", autoOpen: true, slot: { pluginKey: "example.live-view", id: "screen", displayName: "Live view" } } as TaskPluginPanel;
 const browserFixture = vi.hoisted(() => ({ data: [] as import("@paperclipai/shared").TaskBrowser[], viewer: vi.fn(async () => ({ url: "https://live.browser-use.com/test-viewer" })), control: vi.fn(async () => ({})) }));
 vi.mock("@/hooks/useTaskBrowsers", () => ({ useTaskBrowsers: () => ({ data: browserFixture.data, isError: false }) }));
