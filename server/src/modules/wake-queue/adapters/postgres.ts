@@ -1317,6 +1317,7 @@ const issueAdmissionFields = {
   checkoutRunId: issues.checkoutRunId,
   executionRunId: issues.executionRunId,
   executionAgentNameKey: issues.executionAgentNameKey,
+  executionState: issues.executionState, // [shellkube #13880] stage-handoff re-admit guard
   responsibleUserId: issues.responsibleUserId,
   parentId: issues.parentId,
   originKind: issues.originKind,
