@@ -9,6 +9,7 @@ import { TaskBrowserPanel } from "./TaskBrowserPanel";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -98,7 +99,7 @@ import {
   type TaskSidePanelTabPayload,
 } from "@/lib/task-side-panel-state";
 import { cn } from "@/lib/utils";
-import { TaskDocumentPanel } from "./TaskDocumentPanel";
+import { TaskDocumentPanel, TaskDocumentSourceLink } from "./TaskDocumentPanel";
 import { parseDocumentAnnotationHash } from "@/lib/document-annotation-hash";
 import { TaskWorkspaceFilePanel } from "./TaskWorkspaceFilePanel";
 import { TaskSkillPanel } from "./TaskSkillPanel";
@@ -128,6 +129,8 @@ export interface TaskSidePanelProps {
   checkingMonitorNow?: boolean;
   fileTabsEnabled: boolean;
   documentDeepLink?: { requestId: number; documentKey: string } | null;
+  showDocumentSourceTask?: boolean;
+  onArtifactVisibilityChange?: (showsArtifact: boolean) => void;
   /** A new durable output asks the host to reveal this tab once. */
   artifactsOpenRequestId?: number;
   onArtifactsOpened?: (requestId: number) => void;
@@ -288,6 +291,8 @@ function TaskSidePanelForScope({
   checkingMonitorNow = false,
   fileTabsEnabled,
   documentDeepLink,
+  showDocumentSourceTask = false,
+  onArtifactVisibilityChange,
   artifactsOpenRequestId,
   onArtifactsOpened,
   onRequestClose,
@@ -397,7 +402,7 @@ function TaskSidePanelForScope({
       controller.openTab(taskPanelPluginTab(panel), firstArrival);
     }
   }, [dismissedPluginPanels, openedPluginPanels, pluginPanelKey, pluginPanels, pluginPanelsLoading, controller.tabs, controller.closeTab, controller.openTab]);
-  const browsersQuery = useTaskBrowsers(issue.id);
+  const browsersQuery = useTaskBrowsers(issue.id, issue.companyId);
   const newestLiveBrowser = browsersQuery.data?.findLast((browser) => browser.status === "running" || browser.status === "idle");
   useEffect(() => {
     if (!openBrowserId) return;
@@ -429,6 +434,14 @@ function TaskSidePanelForScope({
     }
   }, [openBrowserId, controller.activeTabId, onBrowserOpened, accountScope, issue.companyId, issue.id, fileTabsEnabled]);
   const activeTab = controller.tabs.find((tab) => tab.id === controller.activeTabId) ?? null;
+  const activeKind = activeTab?.payload.kind;
+  const showsArtifact = activeKind === "artifacts" || activeKind === "issue-document"
+    || activeKind === "attachment" || activeKind === "workspace-file" || activeKind === "skill";
+  useLayoutEffect(() => {
+    if (!onArtifactVisibilityChange || !showsArtifact) return;
+    onArtifactVisibilityChange(true);
+    return () => onArtifactVisibilityChange(false);
+  }, [onArtifactVisibilityChange, showsArtifact]);
   const hasArtifactUploadSlot = !conversationAgentId && !issue.id.startsWith("chat:")
     && controller.tabs.some((tab) => tab.payload.kind === "artifacts");
   const canUploadArtifacts = hasArtifactUploadSlot && activeTab?.payload.kind === "artifacts";
@@ -492,7 +505,11 @@ function TaskSidePanelForScope({
   }, [controller.openTab, planDocument, coordinatorWorkspaceEnabled]);
 
   useEffect(() => {
-    if (!documentDeepLink || handledDocumentRequestRef.current === documentDeepLink.requestId) return;
+    if (!documentDeepLink) {
+      handledDocumentRequestRef.current = undefined;
+      return;
+    }
+    if (handledDocumentRequestRef.current === documentDeepLink.requestId) return;
     const parsedTarget = parseDocumentAnnotationHash(location.hash);
     const target = parsedTarget?.documentKey === documentDeepLink.documentKey ? parsedTarget : null;
     const documentIssueId = target?.documentIssueId && target.documentIssueId !== issue.id ? target.documentIssueId : undefined;
@@ -880,18 +897,27 @@ function TaskSidePanelForScope({
       if (viewer.state || viewer.browse) viewer.close();
     }}><IssuePropertiesArtifactsTab issue={issue} documentEditor={documentEditor ?? {}} onOpenDocument={openDocument} uploadState={artifactUploads} /></TextAttachmentContext.Provider>;
   } else if (activeTab.payload.kind === "issue-document") {
-    content = activeTab.payload.documentKey === "plan" && !activeTab.payload.revisionId && !activeTab.payload.documentIssueId ? (
+    const { documentKey, revisionId, documentIssueId } = activeTab.payload;
+    const sourceTask = documentIssueId ?? issue.identifier ?? issue.id;
+    const documentBody = documentKey === "plan" && !revisionId && !documentIssueId ? (
       <IssuePropertiesPlansTab issue={issue} inline={inline} />
     ) : (
       <TaskDocumentPanel
-        issueId={activeTab.payload.documentIssueId ?? issue.id}
-        documentKey={activeTab.payload.documentKey}
-        revisionId={activeTab.payload.revisionId}
-        documentIssueId={activeTab.payload.documentIssueId}
+        companyId={issue.companyId}
+        issueId={documentIssueId ?? issue.id}
+        documentKey={documentKey}
+        revisionId={revisionId}
+        documentIssueId={documentIssueId}
         currentIssueId={issue.id}
-        initialDocument={!activeTab.payload.documentIssueId || activeTab.payload.documentIssueId === issue.id ? documentByKey.get(activeTab.payload.documentKey) : undefined}
+        initialDocument={!documentIssueId || documentIssueId === issue.id ? documentByKey.get(documentKey) : undefined}
       />
     );
+    content = showDocumentSourceTask ? (
+      <div className="flex flex-col gap-4">
+        <TaskDocumentSourceLink taskRef={sourceTask} />
+        {documentBody}
+      </div>
+    ) : documentBody;
   } else if (activeTab.payload.kind === "attachment") {
     content = <TaskAttachmentPanel key={activeTab.payload.attachmentId} issueId={issue.id} attachmentId={activeTab.payload.attachmentId} />;
   } else if (activeTab.payload.kind === "skill") {

@@ -1,3 +1,4 @@
+import { NativePullRequestCompletionError, nativePullRequestCompletionKey, nativePullRequestCompletionReferences, verifyNativePullRequestCompletion } from "./native-pull-request-completion.js";
 import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { assets, companies, completionContracts, documents, documentRevisions, heartbeatRuns, issueDocuments, issueAttachments, issues, issueThreadInteractions, issueWorkProducts, mcpAttachmentUploads, dotRunnerAssignments, type Db } from "@paperclipai/db";
@@ -201,6 +202,11 @@ function explicitlyRequestsFileOutputBySentence(objective: string): boolean {
             ? /\b(as|into|to|named|called)\s+(?:(?:a|an|the|new|separate|markdown|word|excel)\s+)*["'`*]*(?:[^\s]*\/)?$/iu
             : /\b(?:as|into|to)\s+(?:(?:a|an|the|new|separate|markdown|word|excel)\s+)*$/iu).exec(prefix);
           const beforeDestination = prefix.slice(0, destinationMatch?.index ?? 0);
+          const adverb = "(?:(?:actually|really|still|previously|currently|now|already)\\s+)?";
+          const namedDestination = new RegExp(`^\\s+(?:is|was)\\s+${adverb}(?:named|called|titled)\\b`, "iu").test(suffix);
+          const comparison = !namedDestination && /^(?:files?|documents?)$/iu.test(match[0]) && /\bas\s+the\s+$/iu.test(prefix)
+            && new RegExp(`^\\s+${adverb}(?:reads|read(?!\\s+(?:by|from|into)\\b)|is|are|was|were|appears|looks|stands|says|shows|exists)\\b`, "iu").test(suffix);
+          if (comparison) return false;
           const destination = destinationMatch !== null && (!json || !/^(?:to|named|called)$/iu.test(destinationMatch[1])
             || !inputReference.test(beforeDestination));
           if (json) {
@@ -324,14 +330,43 @@ export async function publishedTaskDocuments(db: Db, binding: { companyId: strin
     href: `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issueIdentifier ?? binding.issueId)}#document-${encodeURIComponent(key)}` }));
 }
 
+/** A parent that delegated a file to a child links the child's delivered file
+ * instead of publishing a copy, because native register_deliverable is bound to
+ * its current task. A completed direct child's attachment is a valid citation,
+ * but not this run's publication of a file that the parent itself requests.
+ */
+async function completedChildAttachment(db: Db, binding: { companyId: string; issueId: string; lockSources?: boolean }, id: string): Promise<boolean> {
+  const query = db.select({ id: issueAttachments.id }).from(issueAttachments)
+    .innerJoin(issues, and(eq(issues.id, issueAttachments.issueId), eq(issues.companyId, binding.companyId),
+      eq(issues.parentId, binding.issueId), eq(issues.status, "done")))
+    .where(and(eq(issueAttachments.id, id), eq(issueAttachments.companyId, binding.companyId))).limit(1);
+  const [attachment] = await (binding.lockSources ? query.for("share", { of: [issueAttachments, issues], noWait: true }) : query);
+  return attachment !== undefined;
+}
+
 /** Files cited as completed output must be reachable outside the agent workspace. */
 export async function validateNativeDeliverableEvidence(
   db: Db,
-  binding: { companyId: string; issueId: string; runId: string; objective: string; semanticToolReceipts: unknown; lockSources?: boolean; authoritativeDone?: true },
+  binding: { companyId: string; issueId: string; runId: string; objective: string; semanticToolReceipts: unknown; lockSources?: boolean; authoritativeDone?: true; enteringConfiguredReview?: boolean; verifiedMergedPullRequests?: ReadonlySet<string> },
   result: unknown,
 ): Promise<void> {
   const evidence = publicationEvidence(result);
   if (!binding.authoritativeDone && evidence.disposition !== "done") return;
+  if (!binding.enteringConfiguredReview) {
+    try {
+      if (binding.lockSources) {
+        const references = await nativePullRequestCompletionReferences(db, binding, result);
+        if (references.some(reference => !binding.verifiedMergedPullRequests?.has(nativePullRequestCompletionKey(reference)))) {
+          throw new NativePullRequestCompletionError("Pull request deliverables changed before completion. Recheck their merge state.");
+        }
+      } else {
+        await verifyNativePullRequestCompletion(db, binding, result);
+      }
+    } catch (error) {
+      if (!(error instanceof NativePullRequestCompletionError)) throw error;
+      throw new NativeDeliverableEvidenceError(error.message);
+    }
+  }
   const fileRequested = explicitlyRequestsFileOutput(binding.objective);
   const taskDocumentRequested = explicitlyRequestsTaskDocumentOutput(binding.objective) &&
     !await declinedTaskDocumentNotRequired(db, binding);
@@ -358,7 +393,8 @@ export async function validateNativeDeliverableEvidence(
       const [attachment] = uuid.test(id)
         ? await (binding.lockSources ? query.for("share", { of: [issueAttachments, assets], noWait: true }) : query) : [];
       if (!attachment) {
-        throw new NativeDeliverableEvidenceError("Completion cites no registered attachment on this task. Use register_deliverable for the requested file and cite deliverable:<attachmentId> from its receipt. No human completion approval was created.");
+        if (uuid.test(id) && await completedChildAttachment(db, binding, id)) continue;
+        throw new NativeDeliverableEvidenceError("Completion cites no registered attachment on this task or its completed child tasks. Use register_deliverable for the requested file and cite deliverable:<attachmentId> from its receipt. No human completion approval was created.");
       }
       // A prior output (or user input) can be useful context, but does not prove
       // this run published the newly requested output. The receipt survives a
